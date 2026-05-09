@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <com.github.mikephil.charting.charts.CombinedChart
+            android:id="@+id/candleChart"
+            android:layout_width="match_parent"
+            android:layout_height="260dp"
+            android:background="@color/hiva_card" />
+
+        <TextView
+            android:id="@+id/textChartLegend"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/bot_chart_legend"
+            android:textColor="@color/hiva_text_secondary"
+            android:textSize="11sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonChartZoomIn"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="+"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonChartZoomOut"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="-"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonChartReset"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/bot_chart_reset"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonMarketSignal"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/bot_market_signal"
+                app:backgroundTint="@color/hiva_accent" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonIndicators"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/bot_market_indicators"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonSnapshot"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/bot_snapshot"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonMarketBacktest"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/bot_market_backtest"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/editTf"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="tf"
+                android:padding="10dp"
+                android:text="1"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+
+            <EditText
+                android:id="@+id/editDirection"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="direction: long/short"
+                android:padding="10dp"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/editPrice"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="price"
+                android:inputType="numberDecimal"
+                android:padding="10dp"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+
+            <EditText
+                android:id="@+id/editSl"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="stop_loss"
+                android:inputType="numberDecimal"
+                android:padding="10dp"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+
+            <EditText
+                android:id="@+id/editTp"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="take_profit"
+                android:inputType="numberDecimal"
+                android:padding="10dp"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonPlaceOrder"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/bot_place_order"
+            app:backgroundTint="@color/hiva_accent" />
+
+        <TextView
+            android:id="@+id/textSignalSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/hiva_card"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textSize="12sp" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            app:cardBackgroundColor="@color/hiva_card">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="10dp">
+
+                <TextView
+                    android:id="@+id/textMarketSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/hiva_text_primary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/bot_order_book"
+            android:textColor="@color/hiva_text_secondary"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="160dp"
+            android:layout_marginTop="4dp"
+            android:orientation="horizontal">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recyclerBids"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:padding="6dp" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recyclerAsks"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:padding="6dp" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/bot_positions_orders"
+            android:textColor="@color/hiva_text_secondary"
+            android:textSize="12sp" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerPositionsOrders"
+            android:layout_width="match_parent"
+            android:layout_height="180dp"
+            android:layout_marginTop="4dp"
+            android:background="@color/hiva_card"
+            android:padding="6dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/bot_position_manager"
+            android:textColor="@color/hiva_text_secondary"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonPositionStatus"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/bot_position_status"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonPositionReset"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/bot_position_reset"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/editAdoptPositionId"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="position id"
+                android:padding="10dp"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+
+            <EditText
+                android:id="@+id/editAdoptDirection"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="direction"
+                android:padding="10dp"
+                android:text="long"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/editAdoptFillPrice"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="fill price"
+                android:inputType="numberDecimal"
+                android:padding="10dp"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+
+            <EditText
+                android:id="@+id/editAdoptStopLoss"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="stop loss"
+                android:inputType="numberDecimal"
+                android:padding="10dp"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/editAdoptTargets"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@color/hiva_card"
+            android:hint="targets: 80200,80400,80600"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonPositionAdopt"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/bot_position_adopt"
+            android:textColor="@color/hiva_text_primary"
+            app:strokeColor="@color/hiva_card_stroke" />
+
+        <TextView
+            android:id="@+id/textMarketOut"
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:layout_marginTop="8dp"
+            android:background="@color/hiva_card"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+</ScrollView>

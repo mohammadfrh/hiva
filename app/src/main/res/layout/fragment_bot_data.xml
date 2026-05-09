@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonMockList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/bot_mock_list"
+            app:backgroundTint="@color/hiva_accent" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonCacheList"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/bot_cache_list"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonCacheDelete"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/bot_cache_delete"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/editCacheTf"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="cache tf (1/5/15/30/60)"
+                android:padding="10dp"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+
+            <EditText
+                android:id="@+id/editCacheDate"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="cache date (YYYY-MM-DD)"
+                android:padding="10dp"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonCacheDownloadDay"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/bot_cache_download_day"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonCacheDownloadMonth"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/bot_cache_download_month"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/editCacheMonthStart"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="cache month start (YYYY-MM-DD)"
+                android:padding="10dp"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+
+            <EditText
+                android:id="@+id/editCacheMonthEnd"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@color/hiva_card"
+                android:hint="cache month end (YYYY-MM-DD)"
+                android:padding="10dp"
+                android:textColor="@color/hiva_text_primary"
+                android:textColorHint="@color/hiva_text_secondary" />
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/editCacheMonth"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@color/hiva_card"
+            android:hint="cache month (YYYY-MM)"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/bot_download_day"
+            android:textColor="@color/hiva_text_secondary" />
+
+        <EditText
+            android:id="@+id/editGregorianDate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/hiva_card"
+            android:hint="gregorian_date (YYYY-MM-DD)"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <EditText
+            android:id="@+id/editShamsiDate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@color/hiva_card"
+            android:hint="shamsi_date (YYYY-MM-DD)"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonDownloadDay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/bot_download_day"
+            app:backgroundTint="@color/hiva_accent" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/bot_download_month"
+            android:textColor="@color/hiva_text_secondary" />
+
+        <EditText
+            android:id="@+id/editMonthStart"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/hiva_card"
+            android:hint="gregorian_start (YYYY-MM-DD)"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <EditText
+            android:id="@+id/editMonthEnd"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@color/hiva_card"
+            android:hint="gregorian_end (YYYY-MM-DD)"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <EditText
+            android:id="@+id/editShamsiYearMonth"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@color/hiva_card"
+            android:hint="shamsi_year_month (YYYY-MM)"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonDownloadMonth"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/bot_download_month"
+            app:backgroundTint="@color/hiva_accent" />
+
+        <TextView
+            android:id="@+id/textDataSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/hiva_card"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textSize="12sp" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerDataRows"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:layout_marginTop="8dp"
+            android:background="@color/hiva_card"
+            android:padding="6dp" />
+
+        <TextView
+            android:id="@+id/textDataOut"
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:layout_marginTop="8dp"
+            android:background="@color/hiva_card"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+</ScrollView>

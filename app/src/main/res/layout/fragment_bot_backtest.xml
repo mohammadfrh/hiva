@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+<LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <Spinner
+        android:id="@+id/spinnerDataset"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/hiva_card"
+        android:padding="8dp" />
+
+    <Spinner
+        android:id="@+id/spinnerProfile"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@color/hiva_card"
+        android:padding="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonRunBacktest"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/bot_run_backtest"
+            app:backgroundTint="@color/hiva_accent" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonGetBacktestResult"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:text="@string/bot_get_result"
+            android:textColor="@color/hiva_text_primary"
+            app:strokeColor="@color/hiva_card_stroke" />
+    </LinearLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/buttonBacktestList"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/bot_backtest_list"
+        android:textColor="@color/hiva_text_primary"
+        app:strokeColor="@color/hiva_card_stroke" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/buttonRunAllStrategies"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/bot_run_all_strategies"
+        android:textColor="@color/hiva_text_primary"
+        app:strokeColor="@color/hiva_card_stroke" />
+
+    <TextView
+        android:id="@+id/textBacktestSummary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@color/hiva_card"
+        android:padding="10dp"
+        android:textColor="@color/hiva_text_primary"
+        android:textSize="12sp" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerBacktestRows"
+        android:layout_width="match_parent"
+        android:layout_height="180dp"
+        android:layout_marginTop="8dp"
+        android:background="@color/hiva_card"
+        android:nestedScrollingEnabled="false"
+        android:padding="6dp" />
+
+    <TextView
+        android:id="@+id/textAllTradesTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/bot_all_trades_title"
+        android:textColor="@color/hiva_text_secondary"
+        android:textStyle="bold" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerTradeRows"
+        android:layout_width="match_parent"
+        android:layout_height="240dp"
+        android:layout_marginTop="6dp"
+        android:background="@color/hiva_card"
+        android:nestedScrollingEnabled="true"
+        android:padding="6dp" />
+
+    <TextView
+        android:id="@+id/textBacktestOut"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="220dp"
+        android:layout_marginTop="8dp"
+        android:background="@color/hiva_card"
+        android:padding="10dp"
+        android:textColor="@color/hiva_text_primary"
+        android:textIsSelectable="true"
+        android:textSize="12sp" />
+</LinearLayout>
+</ScrollView>

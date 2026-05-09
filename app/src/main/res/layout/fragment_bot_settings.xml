@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <EditText
+            android:id="@+id/editBackendBase"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/hiva_card"
+            android:hint="@string/bot_backend_base_url"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonSaveBackendBase"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/save"
+            app:backgroundTint="@color/hiva_accent" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonConfigGet"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/bot_config_get"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonRefreshToken"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/bot_refresh_token"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonAuthStatus"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/bot_auth_status"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonAuthUnlock"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/bot_auth_unlock"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/textSettingsStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/hiva_card"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textSize="12sp" />
+
+        <Spinner
+            android:id="@+id/spinnerStrategyProfile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/hiva_card"
+            android:padding="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/bot_auto_trade"
+                android:textColor="@color/hiva_text_secondary" />
+
+            <Switch
+                android:id="@+id/switchAutoTrade"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonSaveStrategyConfig"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/bot_save_strategy_config"
+            app:backgroundTint="@color/hiva_accent" />
+
+        <EditText
+            android:id="@+id/editStrategyJson"
+            android:layout_width="match_parent"
+            android:layout_height="120dp"
+            android:layout_marginTop="6dp"
+            android:background="@color/hiva_card"
+            android:gravity="top|start"
+            android:hint="@string/bot_strategy_json_hint"
+            android:inputType="textMultiLine"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <EditText
+            android:id="@+id/editHivaBaseUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/hiva_card"
+            android:hint="@string/bot_hiva_base_url"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <EditText
+            android:id="@+id/editHivaWsUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@color/hiva_card"
+            android:hint="@string/bot_hiva_ws_url"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <EditText
+            android:id="@+id/editHivaSymbol"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@color/hiva_card"
+            android:hint="@string/bot_hiva_symbol"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonSaveConnectionConfig"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/bot_save_connection_config"
+            android:textColor="@color/hiva_text_primary"
+            app:strokeColor="@color/hiva_card_stroke" />
+
+        <EditText
+            android:id="@+id/editAccessToken"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/hiva_card"
+            android:hint="@string/bot_access_token"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <EditText
+            android:id="@+id/editRefreshToken"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@color/hiva_card"
+            android:hint="@string/bot_refresh_token_value"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <EditText
+            android:id="@+id/editCsrfToken"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@color/hiva_card"
+            android:hint="@string/bot_csrf_token"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonSaveTokens"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/bot_save_tokens"
+            android:textColor="@color/hiva_text_primary"
+            app:strokeColor="@color/hiva_card_stroke" />
+
+        <EditText
+            android:id="@+id/editBotUser"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/hiva_card"
+            android:hint="username"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <EditText
+            android:id="@+id/editBotPass"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@color/hiva_card"
+            android:hint="password"
+            android:inputType="textPassword"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <FrameLayout
+                android:id="@+id/frameBotCaptcha"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_weight="1"
+                android:background="@color/hiva_card">
+
+                <ImageView
+                    android:id="@+id/imageBotCaptcha"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@string/captcha"
+                    android:scaleType="fitCenter" />
+            </FrameLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonCaptcha"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="8dp"
+                android:text="@string/refresh_captcha"
+                android:textColor="@color/hiva_text_primary"
+                app:strokeColor="@color/hiva_card_stroke" />
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/editBotCaptchaValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@color/hiva_card"
+            android:hint="@string/captcha_code"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textColorHint="@color/hiva_text_secondary" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonBotLogin"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/login"
+            app:backgroundTint="@color/hiva_accent" />
+
+        <TextView
+            android:id="@+id/textSettingsOut"
+            android:layout_width="match_parent"
+            android:layout_height="280dp"
+            android:layout_marginTop="8dp"
+            android:background="@color/hiva_card"
+            android:padding="10dp"
+            android:textColor="@color/hiva_text_primary"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+</ScrollView>

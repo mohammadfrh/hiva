@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="10dp"
+    app:cardBackgroundColor="@color/hiva_card"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="0dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="14dp">
+
+        <TextView
+            android:id="@+id/textTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/hiva_text_primary"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            tools:text="معمولی" />
+
+        <TextView
+            android:id="@+id/textAmountIn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:textColor="@color/hiva_text_secondary"
+            android:textSize="13sp"
+            tools:text="مبلغ ورودی: ۲,۹۸۴,۹۹۰ تومان" />
+
+        <TextView
+            android:id="@+id/textAmountOut"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/hiva_text_secondary"
+            android:textSize="13sp"
+            tools:text="مبلغ خروجی: ۳,۰۴۸,۹۹۰ تومان" />
+
+        <TextView
+            android:id="@+id/textPnl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="13sp"
+            tools:text="سود/ضرر: ۶۴,۰۰۰ تومان"
+            tools:textColor="@color/hiva_green" />
+
+        <TextView
+            android:id="@+id/textStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/hiva_text_secondary"
+            android:textSize="13sp"
+            tools:text="وضعیت: بسته" />
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

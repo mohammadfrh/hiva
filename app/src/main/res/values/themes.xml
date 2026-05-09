@@ -1,0 +1,20 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Use non-DayNight so light system theme does not flip surfaces to white over our dark UI. -->
+    <style name="Theme.IncomingCall" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/hiva_accent</item>
+        <item name="colorPrimaryVariant">@color/hiva_accent</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/teal_200</item>
+        <item name="colorSecondaryVariant">@color/teal_700</item>
+        <item name="colorOnSecondary">@color/black</item>
+        <!-- Material text fields use colorSurface / colorOnSurface; set explicitly for contrast. -->
+        <item name="colorSurface">@color/hiva_card</item>
+        <item name="colorOnSurface">@color/hiva_text_primary</item>
+        <item name="android:textColorPrimary">@color/hiva_text_primary</item>
+        <item name="android:textColorSecondary">@color/hiva_text_secondary</item>
+        <item name="android:textColorHint">@color/hiva_text_secondary</item>
+        <item name="android:statusBarColor" tools:targetApi="l">@color/hiva_bg</item>
+        <item name="android:navigationBarColor">@color/hiva_bg</item>
+        <item name="android:windowBackground">@color/hiva_bg</item>
+    </style>
+</resources>
