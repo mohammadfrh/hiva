@@ -154,10 +154,7 @@ def evaluate_swing_entry(
         fast > slow > trend
         and slow > prev_slow
         and candle.close > candle.open
-        and (
-            candle.range >= profile.swing_long_min_range_points
-            or (fast - slow <= 20 and slow - trend <= 10)
-        )
+        and candle.range >= profile.swing_long_min_range_points
         and close_ratio >= profile.swing_close_long_min
         and rsi_value >= profile.swing_rsi_long_min
     ):
@@ -174,6 +171,10 @@ def evaluate_swing_entry(
     if (
         fast < slow < trend
         and slow - fast >= profile.swing_short_min_fast_slow_gap
+        and (
+            profile.swing_short_max_slow_trend_gap <= 0
+            or trend - slow <= profile.swing_short_max_slow_trend_gap
+        )
         and slow < prev_slow
         and candle.close < candle.open
         and close_ratio <= profile.swing_close_short_max
@@ -692,6 +693,7 @@ PROFILES: dict[str, StrategyProfile] = {
         swing_rsi_long_min=cfg.LONG_HOLD_SWING_RSI_LONG_MIN,
         swing_rsi_short_max=cfg.LONG_HOLD_SWING_RSI_SHORT_MAX,
         swing_short_min_fast_slow_gap=cfg.LONG_HOLD_SWING_SHORT_MIN_FAST_SLOW_GAP,
+        swing_short_max_slow_trend_gap=cfg.LONG_HOLD_SWING_SHORT_MAX_SLOW_TREND_GAP,
         swing_min_profit_hold_minutes=cfg.LONG_HOLD_SWING_MIN_PROFIT_HOLD_MINUTES,
         swing_trail_start_points=cfg.LONG_HOLD_SWING_TRAIL_START_POINTS,
         swing_trail_distance_points=cfg.LONG_HOLD_SWING_TRAIL_DISTANCE_POINTS,

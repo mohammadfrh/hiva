@@ -253,6 +253,7 @@ class StrategyProfile:
     swing_rsi_long_min: float = 0.0
     swing_rsi_short_max: float = 100.0
     swing_short_min_fast_slow_gap: float = 0.0
+    swing_short_max_slow_trend_gap: float = 0.0
     swing_min_profit_hold_minutes: int = 0
     swing_trail_start_points: int = 0
     swing_trail_distance_points: int = 0
