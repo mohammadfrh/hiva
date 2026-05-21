@@ -37,6 +37,7 @@ import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import retrofit2.HttpException
 
@@ -106,6 +107,10 @@ class AutoTradeService : Service() {
         private const val MAX_SIGNAL_PAYLOAD_COMPACT_JSON_CHARS = 1800
         private const val MAX_RECOVERY_REPLAY_RUNS = 180
         private const val PROTECTIVE_CLOSE_NO_SIGNAL_THRESHOLD = 3
+        private const val SWING_PROFILE_ID = "scaled_units_long_hold"
+        private const val DEFAULT_RECOVER_ENTRY_MAX_AGE_SEC = 60L
+        private const val SWING_RECOVER_ENTRY_MAX_AGE_SEC = 10 * 60L
+        private const val SWING_RECOVER_ENTRY_MAX_DRIFT_POINTS = 90.0
         /** Bump when you want a clean prefs file on device (old XML left unused under shared_prefs). */
         private const val PREFS_NAME = "auto_trade_service_prefs_v43"
         private const val PREFS_NAME2 = "auto_trade_service_signal_payload_prefs_v43"
@@ -147,6 +152,15 @@ class AutoTradeService : Service() {
             Log.i(TAG, "dispatch stopAndCloseActive action")
             context.startService(i)
         }
+    }
+
+    private fun isSwingProfile(profileId: String): Boolean = profileId == SWING_PROFILE_ID
+
+    private fun closedOnlyCandles(candles: List<LocalCandle>, nowSec: Long): List<LocalCandle> {
+        if (candles.isEmpty()) return emptyList()
+        val currentMinuteStart = (nowSec / 60L) * 60L
+        val maxClosedTime = currentMinuteStart - 60L
+        return candles.filter { it.time <= maxClosedTime }
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -462,6 +476,7 @@ class AutoTradeService : Service() {
 
     private suspend fun runCycle(): Long {
         val profileId = activeProfileId
+        val swingProfile = isSwingProfile(profileId)
         val nowMs = System.currentTimeMillis()
         val nowSec = nowMs / 1000L
         val prevProcessedBaseline = lastProcessedCandleTimeSec
@@ -474,8 +489,9 @@ class AutoTradeService : Service() {
         if (!cacheSync.ok) {
             errorMessage = mergeError(errorMessage, cacheSync.error)
         }
-        val signalCandles = cache1m as List<LocalCandle>
-        val lastPrice = signalCandles.lastOrNull()?.close ?: 0.0
+        val rawCachedCandles = cache1m as List<LocalCandle>
+        val signalCandles = closedOnlyCandles(rawCachedCandles, nowSec)
+        val lastPrice = rawCachedCandles.lastOrNull()?.close ?: signalCandles.lastOrNull()?.close ?: 0.0
         val currentClosedCandleCandidate = signalCandles.lastOrNull()?.time ?: 0L
         val fastRecheckCandidate = currentClosedCandleCandidate > 0L &&
             currentClosedCandleCandidate == lastProcessedCandleTimeSec &&
@@ -546,7 +562,7 @@ class AutoTradeService : Service() {
 
         if (signalCandles.isEmpty()) {
             errorMessage = mergeError(errorMessage, "market/history cache empty")
-            Log.w(TAG, "history cache empty profile=$profileId nowSec=$nowSec cacheReady=$cacheReady")
+            Log.w(TAG, "history cache empty profile=$profileId nowSec=$nowSec cacheReady=$cacheReady rawCache=${rawCachedCandles.size}")
         } else {
             val first = signalCandles.first().time
             val last = signalCandles.last().time
@@ -554,7 +570,7 @@ class AutoTradeService : Service() {
             val lagMin = ((nowSec - last).coerceAtLeast(0L)) / 60L
             Log.i(
                 TAG,
-                "history fetch ok profile=$profileId candles=${signalCandles.size} first=$first last=$last coverageMin=$coverageMin lagToNowMin=$lagMin"
+                "history fetch ok profile=$profileId candles=${signalCandles.size} raw=${rawCachedCandles.size} first=$first last=$last coverageMin=$coverageMin lagToNowMin=$lagMin"
             )
         }
 
@@ -628,7 +644,7 @@ class AutoTradeService : Service() {
             "cycle portfolio has=$hasPortfolio id=$portfolioId free=$portfolioUnits open=$openPositions pending=$pendingOrders balance=$userBalance wsAccountReady=$wsAccountReady"
         )
 
-        val mtfSnapshot = snapshotMtfCache()
+        val mtfSnapshot = if (swingProfile) emptyMap<Int, List<LocalCandle>>() else snapshotMtfCache()
         val livePayloadHash = if (shouldProcessClosedCandle) {
             computeSignalPayloadHash(signalCandles, mtfSnapshot)
         } else {
@@ -751,13 +767,45 @@ class AutoTradeService : Service() {
         // we take the trade like backtest would, instead of sitting on `position_update`
         // forever while the broker stays flat.
         val engineEntryTimeSec = signal.longValue("entry_time", 0L)
+        val recoverEntryMaxAgeSec = if (swingProfile) {
+            SWING_RECOVER_ENTRY_MAX_AGE_SEC
+        } else {
+            DEFAULT_RECOVER_ENTRY_MAX_AGE_SEC
+        }
         val freshEngineEntry = engineEntryTimeSec > 0L &&
             currentClosedCandleTime > 0L &&
-            (currentClosedCandleTime - engineEntryTimeSec) in 0L..60L
+            (currentClosedCandleTime - engineEntryTimeSec) in 0L..recoverEntryMaxAgeSec
+        val recoverEntryPrice = signal.stringValue("entry_price", "").toDoubleOrNull()
+        val recoverAction = when (signalDirection.lowercase(Locale.US)) {
+            "long" -> "buy"
+            "short" -> "sell"
+            else -> ""
+        }
+        val recoverMarketRef = if (recoverEntryPrice != null && recoverAction.isNotBlank()) {
+            marketReferenceForVerbalOrder(
+                action = recoverAction,
+                bestBid = bestBid,
+                bestAsk = bestAsk,
+                lastPrice = price,
+                entryFallback = recoverEntryPrice.roundToInt()
+            )
+        } else {
+            0
+        }
+        val recoverEntryDriftPoints = if (recoverEntryPrice != null && recoverMarketRef > 0) {
+            abs(recoverMarketRef.toDouble() - recoverEntryPrice)
+        } else {
+            Double.POSITIVE_INFINITY
+        }
+        val recoverEntryPriceOk = !swingProfile || recoverEntryDriftPoints <= SWING_RECOVER_ENTRY_MAX_DRIFT_POINTS
         val shouldAttemptPositionUpdatePromotion = shouldProcessClosedCandle &&
             signalType == "position_update" &&
             hasNoLiveExposure &&
-            (recoveryMode || freshEngineEntry || shouldReprocessClosedCandle)
+            (if (swingProfile) {
+                freshEngineEntry && recoverEntryPriceOk
+            } else {
+                recoveryMode || freshEngineEntry || shouldReprocessClosedCandle
+            })
         val recoverEntryParity = if (shouldAttemptPositionUpdatePromotion) {
             verifyRecoverEntryPromotionParity(
                 profileId = profileId,
@@ -817,7 +865,8 @@ class AutoTradeService : Service() {
                 "state drift detected profile=$profileId candle=$currentClosedCandleTime " +
                     "signal=position_update but broker flat (wsOpen=$openPositions wsPending=$pendingOrders " +
                     "restOpen=$openPositionsRest restPending=$pendingOrdersRest) " +
-                    "engineEntryTime=$engineEntryTimeSec deltaSec=${currentClosedCandleTime - engineEntryTimeSec} " +
+                    "engineEntryTime=$engineEntryTimeSec deltaSec=${currentClosedCandleTime - engineEntryTimeSec} maxAge=$recoverEntryMaxAgeSec " +
+                    "marketRef=$recoverMarketRef driftPts=${String.format(Locale.US, "%.1f", recoverEntryDriftPoints)} " +
                     "trigger=$trigger parity=${recoverEntryParity.detail}, promoting to entry signal"
             )
             appendCycleAnomalyRow(
@@ -865,7 +914,8 @@ class AutoTradeService : Service() {
                 TAG,
                 "position_update skipped promotion profile=$profileId candle=$currentClosedCandleTime " +
                     "engineEntryTime=$engineEntryTimeSec deltaSec=${if (engineEntryTimeSec > 0L) currentClosedCandleTime - engineEntryTimeSec else -1L} " +
-                    "recovery=$recoveryMode skip=$skipReason parity=${recoverEntryParity.detail}"
+                    "maxAge=$recoverEntryMaxAgeSec marketRef=$recoverMarketRef driftPts=${String.format(Locale.US, "%.1f", recoverEntryDriftPoints)} " +
+                    "priceOk=$recoverEntryPriceOk recovery=$recoveryMode skip=$skipReason parity=${recoverEntryParity.detail}"
             )
         }
         if (shouldProcessClosedCandle &&
@@ -987,7 +1037,16 @@ class AutoTradeService : Service() {
                     profileId,
                     "NO_SIGNAL_OPEN|${nowSec}|${currentClosedCandleTime}|count=$consecutiveNoSignalWhileOpen|threshold=$PROTECTIVE_CLOSE_NO_SIGNAL_THRESHOLD"
                 )
-                if (consecutiveNoSignalWhileOpen >= PROTECTIVE_CLOSE_NO_SIGNAL_THRESHOLD) {
+                if (swingProfile) {
+                    Log.w(
+                        TAG,
+                        "protective close suppressed for swing profile=$profileId candle=$currentClosedCandleTime noSignalCount=$consecutiveNoSignalWhileOpen"
+                    )
+                    appendAuditDebugRow(
+                        profileId,
+                        "PROTECTIVE_SUPPRESS|${nowSec}|${currentClosedCandleTime}|count=$consecutiveNoSignalWhileOpen|why=swing_wait_for_engine_close"
+                    )
+                } else if (consecutiveNoSignalWhileOpen >= PROTECTIVE_CLOSE_NO_SIGNAL_THRESHOLD) {
                     val brokerDir = normalizedBrokerOpenDirection(wsSnapshot, openPositionsList, wsAccountReady).orEmpty()
                     signal = JsonObject().apply {
                         addProperty("type", "close_signal")
@@ -1050,9 +1109,9 @@ class AutoTradeService : Service() {
             append(" candle=").append(currentClosedCandleTime)
             append(" candleAgeMs=").append(currentClosedCandleAgeMs)
             append(" miss=").append(missedCandlesCount)
-            val engineEntryTimeSec = signal.longValue("entry_time", 0L)
-            if (engineEntryTimeSec > 0L) {
-                append(" entryTime=").append(engineEntryTimeSec)
+            val traceEngineEntryTimeSec = signal.longValue("entry_time", 0L)
+            if (traceEngineEntryTimeSec > 0L) {
+                append(" entryTime=").append(traceEngineEntryTimeSec)
             }
             if (recoveredFromPositionUpdateDrift) {
                 append(" drift=position_update_without_open")
@@ -1093,7 +1152,7 @@ class AutoTradeService : Service() {
         var lastLiveTransactionIdUpdate: String? = wsSnapshot.lastTransactionId.takeIf { it.isNotBlank() }
         val hasOpenPositionForRisk =
             openPositions > 0 || openPositionsRest > 0
-        val riskUpdateOutcome = if (shouldProcessClosedCandle && hasOpenPositionForRisk) {
+        val riskUpdateOutcome = if (shouldProcessClosedCandle && hasOpenPositionForRisk && !swingProfile) {
             maybeUpdateOpenPositionRisk(
                 signal = signal,
                 wsSnapshot = wsSnapshot,
@@ -1212,7 +1271,7 @@ class AutoTradeService : Service() {
                         var driftRecoverMarketRef: Int? = null
                         var submitTake = take.roundToInt()
                         var submitStop = stop.roundToInt()
-                        if (signalReason == "position_update_recover_entry") {
+                        if (signalReason == "position_update_recover_entry" || swingProfile) {
                             val marketRef = marketReferenceForVerbalOrder(
                                 action = action,
                                 bestBid = bestBid,
@@ -1232,7 +1291,7 @@ class AutoTradeService : Service() {
                             submitStop = rebased.second
                             Log.w(
                                 TAG,
-                                "DRIFT_RECOVER rebase action=$action simEntry=${entry.roundToInt()} marketRef=$marketRef " +
+                                "LIVE_REBASE action=$action reason=${signalReason.ifBlank { "-" }} swing=$swingProfile simEntry=${entry.roundToInt()} marketRef=$marketRef " +
                                     "rawTp=${take.roundToInt()} rawSl=${stop.roundToInt()} -> tp=$submitTake sl=$submitStop"
                             )
                         }

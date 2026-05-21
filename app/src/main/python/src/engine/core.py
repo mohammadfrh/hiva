@@ -357,7 +357,7 @@ def _check_swing_system_exits(
     holding_minutes = max(0, candle.time - pos.entry_time) // 60
 
     if pos.direction == "long":
-        if candle.close <= pos.stop_loss and candle.close < candle.open:
+        if candle.low <= pos.stop_loss:
             _close_position(state, candle, candle_index, "stopLoss", pos.stop_loss, profile)
             return True
         if (
@@ -369,7 +369,7 @@ def _check_swing_system_exits(
             _close_position(state, candle, candle_index, "trailingStop", pos.trailing_stop, profile)
             return True
     else:
-        if candle.close >= pos.stop_loss and candle.close > candle.open:
+        if candle.high >= pos.stop_loss:
             _close_position(state, candle, candle_index, "stopLoss", pos.stop_loss, profile)
             return True
         if (
