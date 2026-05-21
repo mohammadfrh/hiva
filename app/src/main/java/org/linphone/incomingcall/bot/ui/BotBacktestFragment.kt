@@ -2,6 +2,7 @@ package org.linphone.incomingcall.bot.ui
 
 import android.os.Bundle
 import android.graphics.Color
+import android.util.Base64
 import androidx.core.text.HtmlCompat
 import android.util.Log
 import android.view.View
@@ -30,13 +31,20 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.io.ByteArrayOutputStream
+import java.util.zip.GZIPOutputStream
 import kotlin.math.max
 
 class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
     private val tag = "BT_UI"
     /** Tehran — same zone as trade times in the UI. */
     private val tradeZone: ZoneId = ZoneId.of("Asia/Tehran")
-    private val profiles = listOf("baseline", "long_protection", "scaled_units")
+    private val profiles = listOf(
+        "baseline",
+        "long_protection",
+        "scaled_units",
+        "scaled_units_long_hold"
+    )
     private val localRows = mutableListOf<JsonObject>()
     private lateinit var datasetSpinner: Spinner
     private lateinit var datasetAdapter: ArrayAdapter<String>
@@ -545,7 +553,54 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
         trace.lineSequence().forEach { line ->
             Log.i(tag, "BT_TRACE $line")
         }
+        if (profile == "scaled_units_long_hold") {
+            logDatasetDumpForTuning(dataset, store)
+        }
         return trace
+    }
+
+    private suspend fun logDatasetDumpForTuning(dataset: String, store: LocalDataStore) {
+        val payload = JsonObject().apply {
+            addProperty("dataset", dataset)
+            add("1m", candlesToJsonArray(store.loadDatasetCandles(dataset, "1")))
+            add("5m", candlesToJsonArray(store.loadDatasetCandles(dataset, "5")))
+            add("15m", candlesToJsonArray(store.loadDatasetCandles(dataset, "15")))
+            add("30m", candlesToJsonArray(store.loadDatasetCandles(dataset, "30")))
+            add("60m", candlesToJsonArray(store.loadDatasetCandles(dataset, "60")))
+        }.toString()
+        val compressed = ByteArrayOutputStream().use { bytes ->
+            GZIPOutputStream(bytes).use { gzip ->
+                gzip.write(payload.toByteArray(Charsets.UTF_8))
+            }
+            bytes.toByteArray()
+        }
+        val encoded = Base64.encodeToString(compressed, Base64.NO_WRAP)
+        val chunkSize = 3000
+        val totalChunks = (encoded.length + chunkSize - 1) / chunkSize
+        Log.i(
+            tag,
+            "BT_DATA_DUMP BEGIN dataset=$dataset encoding=gzip+base64 chunks=$totalChunks chars=${encoded.length}"
+        )
+        for (i in 0 until totalChunks) {
+            val start = i * chunkSize
+            val end = minOf(start + chunkSize, encoded.length)
+            Log.i(tag, "BT_DATA_DUMP chunk=${i + 1}/$totalChunks ${encoded.substring(start, end)}")
+        }
+        Log.i(tag, "BT_DATA_DUMP END dataset=$dataset")
+    }
+
+    private fun candlesToJsonArray(candles: List<org.linphone.incomingcall.bot.local.LocalCandle>): JsonArray {
+        val arr = JsonArray()
+        candles.forEach { candle ->
+            arr.add(JsonObject().apply {
+                addProperty("time", candle.time)
+                addProperty("open", candle.open)
+                addProperty("high", candle.high)
+                addProperty("low", candle.low)
+                addProperty("close", candle.close)
+            })
+        }
+        return arr
     }
 
     private suspend fun buildAutoTradeReplayTrace(

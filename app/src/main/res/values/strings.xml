@@ -94,7 +94,7 @@
     <string name="bot_position_status">Position Status</string>
     <string name="bot_position_reset">Position Reset</string>
     <string name="bot_position_adopt">Adopt Position</string>
-    <string name="bot_strategy_json_hint">Strategy JSON (baseline/long_protection/scaled_units)</string>
+    <string name="bot_strategy_json_hint">Strategy JSON (baseline/long_protection/scaled_units/scaled_units_long_hold)</string>
     <string name="bot_hiva_base_url">Hiva Base URL</string>
     <string name="bot_hiva_ws_url">Hiva WS URL</string>
     <string name="bot_hiva_symbol">Hiva Symbol</string>

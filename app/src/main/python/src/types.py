@@ -229,3 +229,34 @@ class StrategyProfile:
     base_quantity: int
     long_protection: bool   # extra early-exit logic for longs
     min_score_to_trade: int
+    # Optional overrides for long-hold / anti-scalp profiles (None = use src.config defaults).
+    stop_buffer_points: Optional[int] = None
+    fee_lock_after_target_index: int = 0   # 0 = fee-lock on TP1; 1 = skip TP1, fee-lock from TP2
+    fee_lock_points: Optional[int] = None
+    min_candles_before_stop_tighten: int = 0
+    min_favorable_points_before_stop_tighten: int = 0
+    general_exit_candles: Optional[int] = None
+    general_exit_progress: Optional[int] = None
+    max_loss_points_per_trade: Optional[int] = None
+    min_minutes_between_trades: int = 0
+    max_quantity_cap: Optional[int] = None
+    min_score_for_two_units: int = 0   # 0 = no extra gate; else score must be >= this for 2+ units
+    trailing_min_targets_hit: Optional[int] = None
+    profit_stop_requires_reversal_close: bool = False
+    swing_signal_timeframe_minutes: int = 0
+    swing_ema_fast: int = 0
+    swing_ema_slow: int = 0
+    swing_ema_trend: int = 0
+    swing_close_long_min: float = 0.0
+    swing_close_short_max: float = 1.0
+    swing_long_min_range_points: float = 0.0
+    swing_rsi_long_min: float = 0.0
+    swing_rsi_short_max: float = 100.0
+    swing_short_min_fast_slow_gap: float = 0.0
+    swing_min_profit_hold_minutes: int = 0
+    swing_trail_start_points: int = 0
+    swing_trail_distance_points: int = 0
+    swing_max_hold_minutes: int = 0
+    swing_disable_take_profit: bool = False
+    loss_streak_pause_count: int = 0     # 0 = off; pause new entries after this many losses in a row
+    loss_streak_pause_minutes: int = 0

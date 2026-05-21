@@ -91,6 +91,7 @@ def run_backtest(
             state,
             candles_1m,
             len(candles_1m) - 1,
+            profile,
             is_backtest=True,
         )
 

@@ -51,6 +51,147 @@ def _lower_wick(candle: Candle) -> float:
     return min(candle.open, candle.close) - candle.low
 
 
+def _aggregate_candles(candles: list[Candle], timeframe_minutes: int, current_time: int) -> list[Candle]:
+    """Aggregate completed 1m candles into higher timeframe candles without lookahead."""
+    step = timeframe_minutes * 60
+    out: list[Candle] = []
+    current: Optional[Candle] = None
+    for candle in candles:
+        if candle.time >= current_time:
+            break
+        bucket_time = (candle.time // step) * step
+        if current is None or current.time != bucket_time:
+            if current is not None:
+                out.append(current)
+            current = Candle(bucket_time, candle.open, candle.high, candle.low, candle.close)
+        else:
+            current.high = max(current.high, candle.high)
+            current.low = min(current.low, candle.low)
+            current.close = candle.close
+    if current is not None:
+        out.append(current)
+    return out
+
+
+def _ema_values(values: list[float], period: int) -> list[Optional[float]]:
+    out: list[Optional[float]] = [None] * len(values)
+    ema: Optional[float] = None
+    k = 2.0 / (period + 1)
+    for idx, value in enumerate(values):
+        if ema is None:
+            if idx + 1 >= period:
+                ema = sum(values[idx - period + 1:idx + 1]) / period
+                out[idx] = ema
+        else:
+            ema = value * k + ema * (1 - k)
+            out[idx] = ema
+    return out
+
+
+def _rsi_values(values: list[float], period: int = 14) -> list[Optional[float]]:
+    out: list[Optional[float]] = [None] * len(values)
+    gains: list[float] = []
+    losses: list[float] = []
+    avg_gain: Optional[float] = None
+    avg_loss: Optional[float] = None
+    for idx in range(1, len(values)):
+        change = values[idx] - values[idx - 1]
+        gains.append(max(change, 0.0))
+        losses.append(max(-change, 0.0))
+        if idx >= period:
+            if idx == period:
+                avg_gain = sum(gains[:period]) / period
+                avg_loss = sum(losses[:period]) / period
+            else:
+                assert avg_gain is not None and avg_loss is not None
+                avg_gain = (avg_gain * (period - 1) + gains[-1]) / period
+                avg_loss = (avg_loss * (period - 1) + losses[-1]) / period
+            out[idx] = 100.0 if avg_loss == 0 else 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
+    return out
+
+
+def evaluate_swing_entry(
+    candles: list[Candle],
+    index: int,
+    profile: StrategyProfile,
+) -> Optional[SignalCandle]:
+    if profile.swing_signal_timeframe_minutes <= 0:
+        return None
+    if index <= 0:
+        return None
+
+    current_candle = candles[index]
+    step = profile.swing_signal_timeframe_minutes * 60
+    if current_candle.time % step != 0:
+        return None
+
+    htf = _aggregate_candles(candles, profile.swing_signal_timeframe_minutes, current_candle.time)
+    closes = [c.close for c in htf]
+    if len(htf) < max(profile.swing_ema_trend, 14) + 2:
+        return None
+
+    ema_fast = _ema_values(closes, profile.swing_ema_fast)
+    ema_slow = _ema_values(closes, profile.swing_ema_slow)
+    ema_trend = _ema_values(closes, profile.swing_ema_trend)
+    rsi = _rsi_values(closes, 14)
+    idx = len(htf) - 1
+    if any(v is None for v in [ema_fast[idx], ema_slow[idx], ema_trend[idx], rsi[idx], ema_slow[idx - 1]]):
+        return None
+
+    candle = htf[idx]
+    close_ratio = _close_in_range(candle)
+    fast = float(ema_fast[idx])  # type: ignore[arg-type]
+    slow = float(ema_slow[idx])  # type: ignore[arg-type]
+    trend = float(ema_trend[idx])  # type: ignore[arg-type]
+    prev_slow = float(ema_slow[idx - 1])  # type: ignore[arg-type]
+    rsi_value = float(rsi[idx])  # type: ignore[arg-type]
+    notes = [
+        f"swing-{profile.swing_signal_timeframe_minutes}m",
+        f"ema-{profile.swing_ema_fast}-{profile.swing_ema_slow}-{profile.swing_ema_trend}",
+    ]
+
+    if (
+        fast > slow > trend
+        and slow > prev_slow
+        and candle.close > candle.open
+        and (
+            candle.range >= profile.swing_long_min_range_points
+            or (fast - slow <= 20 and slow - trend <= 10)
+        )
+        and close_ratio >= profile.swing_close_long_min
+        and rsi_value >= profile.swing_rsi_long_min
+    ):
+        return SignalCandle(
+            candle=candle,
+            candle_index=index,
+            direction="long",
+            score=profile.min_score_to_trade,
+            notes=notes + ["swing-trend-up"],
+            confirm_price=current_candle.open,
+            cancel_price=current_candle.open - (profile.max_loss_points_per_trade or cfg.MAX_LOSS_POINTS_PER_TRADE),
+        )
+
+    if (
+        fast < slow < trend
+        and slow - fast >= profile.swing_short_min_fast_slow_gap
+        and slow < prev_slow
+        and candle.close < candle.open
+        and close_ratio <= profile.swing_close_short_max
+        and rsi_value <= profile.swing_rsi_short_max
+    ):
+        return SignalCandle(
+            candle=candle,
+            candle_index=index,
+            direction="short",
+            score=profile.min_score_to_trade,
+            notes=notes + ["swing-trend-down"],
+            confirm_price=current_candle.open,
+            cancel_price=current_candle.open + (profile.max_loss_points_per_trade or cfg.MAX_LOSS_POINTS_PER_TRADE),
+        )
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Strategy interface
 # ---------------------------------------------------------------------------
@@ -74,6 +215,7 @@ class StrategyInterface(ABC):
         candle: Candle,
         indicators: IndicatorSet,
         index: int,
+        profile: StrategyProfile,
     ) -> bool:
         """Return True if strategy-specific conditions warrant closing the position."""
 
@@ -412,6 +554,7 @@ class PullbackTrendStrategy(StrategyInterface):
         candle: Candle,
         indicators: IndicatorSet,
         index: int,
+        profile: StrategyProfile,
     ) -> bool:
         """
         Time-based strategy exit. (B6)
@@ -419,6 +562,16 @@ class PullbackTrendStrategy(StrategyInterface):
         """
         candles_in_trade = index - position.entry_index
         close_ratio = _close_in_range(candle)
+        general_exit_candles = (
+            profile.general_exit_candles
+            if profile.general_exit_candles is not None
+            else cfg.GENERAL_EXIT_CANDLES
+        )
+        general_exit_progress = (
+            profile.general_exit_progress
+            if profile.general_exit_progress is not None
+            else cfg.GENERAL_EXIT_PROGRESS
+        )
 
         # Long-protection exits (B8: only when long_protection=True)
         if self.long_protection and position.direction == "long":
@@ -446,7 +599,7 @@ class PullbackTrendStrategy(StrategyInterface):
                     return True
 
         # General stale-trade exit (all positions)
-        if candles_in_trade < cfg.GENERAL_EXIT_CANDLES:
+        if candles_in_trade < general_exit_candles:
             return False
 
         if position.direction == "long":
@@ -455,7 +608,7 @@ class PullbackTrendStrategy(StrategyInterface):
                 candle.close < candle.open
                 and candle.close < position.entry_price
             )
-            if progress < cfg.GENERAL_EXIT_PROGRESS and failing:
+            if progress < general_exit_progress and failing:
                 return True
         else:
             progress = position.entry_price - position.best_price
@@ -463,20 +616,25 @@ class PullbackTrendStrategy(StrategyInterface):
                 candle.close > candle.open
                 and candle.close > position.entry_price
             )
-            if progress < cfg.GENERAL_EXIT_PROGRESS and failing:
+            if progress < general_exit_progress and failing:
                 return True
 
         return False
 
     def get_quantity(self, profile: StrategyProfile, score: int) -> int:
         if profile.sizing_mode == "fixed":
-            return profile.base_quantity
-        # scaled: TS thresholds (B8)
-        if score >= 12:
-            return 3
-        if score >= 10:
-            return 2
-        return profile.base_quantity
+            qty = profile.base_quantity
+        elif score >= 12:
+            qty = 3
+        elif score >= 10:
+            qty = 2
+        else:
+            qty = profile.base_quantity
+        if profile.min_score_for_two_units > 0 and score < profile.min_score_for_two_units:
+            qty = min(qty, 1)
+        if profile.max_quantity_cap is not None:
+            qty = min(qty, profile.max_quantity_cap)
+        return qty
 
 
 # ---------------------------------------------------------------------------
@@ -504,6 +662,43 @@ PROFILES: dict[str, StrategyProfile] = {
         base_quantity=1,
         long_protection=True,   # (B8: was False)
         min_score_to_trade=cfg.MIN_ENTRY_SCORE,
+    ),
+    "scaled_units_long_hold": StrategyProfile(
+        profile_id="scaled_units_long_hold",
+        sizing_mode="scaled",
+        base_quantity=1,
+        long_protection=True,
+        min_score_to_trade=cfg.LONG_HOLD_MIN_ENTRY_SCORE,
+        stop_buffer_points=cfg.LONG_HOLD_STOP_BUFFER_POINTS,
+        fee_lock_after_target_index=cfg.LONG_HOLD_FEE_LOCK_AFTER_TARGET_INDEX,
+        fee_lock_points=cfg.LONG_HOLD_FEE_LOCK_POINTS,
+        min_candles_before_stop_tighten=cfg.LONG_HOLD_MIN_CANDLES_BEFORE_STOP_TIGHTEN,
+        min_favorable_points_before_stop_tighten=cfg.LONG_HOLD_MIN_FAVORABLE_POINTS_BEFORE_STOP_TIGHTEN,
+        general_exit_candles=cfg.LONG_HOLD_GENERAL_EXIT_CANDLES,
+        general_exit_progress=cfg.LONG_HOLD_GENERAL_EXIT_PROGRESS,
+        max_loss_points_per_trade=cfg.LONG_HOLD_MAX_LOSS_POINTS_PER_TRADE,
+        min_minutes_between_trades=cfg.LONG_HOLD_MIN_MINUTES_BETWEEN_TRADES,
+        max_quantity_cap=cfg.LONG_HOLD_MAX_QUANTITY_CAP,
+        min_score_for_two_units=cfg.LONG_HOLD_MIN_SCORE_FOR_TWO_UNITS,
+        trailing_min_targets_hit=cfg.LONG_HOLD_TRAILING_MIN_TARGETS_HIT,
+        profit_stop_requires_reversal_close=cfg.LONG_HOLD_PROFIT_STOP_REQUIRES_REVERSAL_CLOSE,
+        swing_signal_timeframe_minutes=cfg.LONG_HOLD_SWING_SIGNAL_TIMEFRAME_MINUTES,
+        swing_ema_fast=cfg.LONG_HOLD_SWING_EMA_FAST,
+        swing_ema_slow=cfg.LONG_HOLD_SWING_EMA_SLOW,
+        swing_ema_trend=cfg.LONG_HOLD_SWING_EMA_TREND,
+        swing_close_long_min=cfg.LONG_HOLD_SWING_CLOSE_LONG_MIN,
+        swing_close_short_max=cfg.LONG_HOLD_SWING_CLOSE_SHORT_MAX,
+        swing_long_min_range_points=cfg.LONG_HOLD_SWING_LONG_MIN_RANGE_POINTS,
+        swing_rsi_long_min=cfg.LONG_HOLD_SWING_RSI_LONG_MIN,
+        swing_rsi_short_max=cfg.LONG_HOLD_SWING_RSI_SHORT_MAX,
+        swing_short_min_fast_slow_gap=cfg.LONG_HOLD_SWING_SHORT_MIN_FAST_SLOW_GAP,
+        swing_min_profit_hold_minutes=cfg.LONG_HOLD_SWING_MIN_PROFIT_HOLD_MINUTES,
+        swing_trail_start_points=cfg.LONG_HOLD_SWING_TRAIL_START_POINTS,
+        swing_trail_distance_points=cfg.LONG_HOLD_SWING_TRAIL_DISTANCE_POINTS,
+        swing_max_hold_minutes=cfg.LONG_HOLD_SWING_MAX_HOLD_MINUTES,
+        swing_disable_take_profit=cfg.LONG_HOLD_SWING_DISABLE_TAKE_PROFIT,
+        loss_streak_pause_count=cfg.LONG_HOLD_LOSS_STREAK_PAUSE_COUNT,
+        loss_streak_pause_minutes=cfg.LONG_HOLD_LOSS_STREAK_PAUSE_MINUTES,
     ),
 }
 

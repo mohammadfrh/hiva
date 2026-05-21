@@ -19,7 +19,7 @@ from src.types import (
     Candle, Direction, IndicatorSet, PendingEntry, Position,
     StrategyProfile, Trade,
 )
-from src.strategies import PullbackTrendStrategy, StrategyInterface
+from src.strategies import PullbackTrendStrategy, StrategyInterface, evaluate_swing_entry
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +56,9 @@ class EngineState:
         self.peak_balance: float = cfg.STARTING_BALANCE
         self.max_drawdown: float = 0.0
         self.withdrawn: float = 0.0
+        self.last_exit_time: int = 0
+        self.consecutive_losses: int = 0
+        self.pause_until_time: int = 0
 
     @property
     def is_flat(self) -> bool:
@@ -79,12 +82,15 @@ def process_candle(
 ) -> None:
     if state.position is not None:
         _update_position_tracking(state.position, candle)
-        _advance_targets(state.position, candle)         # move SL on target hits
-        _update_trailing_stop(state.position, candle)    # update trailing stop (B7)
+        if profile.swing_signal_timeframe_minutes > 0:
+            _update_swing_trailing_stop(state.position, candle, profile)
+        else:
+            _advance_targets(state.position, candle, profile, candle_index)
+            _update_trailing_stop(state.position, candle, profile)
 
-        closed = _check_system_exits(state, candle, candle_index)
-        if not closed:
-            _check_strategy_exit(state, candle, indicators, candle_index, strategy)
+        closed = _check_system_exits(state, candle, candle_index, profile)
+        if not closed and profile.swing_signal_timeframe_minutes <= 0:
+            _check_strategy_exit(state, candle, indicators, candle_index, strategy, profile)
         return
 
     # flat: check pending first
@@ -93,13 +99,19 @@ def process_candle(
 
     # if still flat and no pending, look for new signal
     if state.position is None and state.pending is None:
-        if candle_index >= cfg.MIN_WARMUP_CANDLES:
-            signal = strategy.evaluate_entry(
-                all_candles, indicators, candle_index,
-                mtf_candles, mtf_indicators,
-            )
+        if candle_index >= cfg.MIN_WARMUP_CANDLES and _may_seek_new_entry(state, candle, profile):
+            if profile.swing_signal_timeframe_minutes > 0:
+                signal = evaluate_swing_entry(all_candles, candle_index, profile)
+            else:
+                signal = strategy.evaluate_entry(
+                    all_candles, indicators, candle_index,
+                    mtf_candles, mtf_indicators,
+                )
             if signal is not None and signal.score >= profile.min_score_to_trade:
-                state.pending = PendingEntry(signal=signal, created_at_index=candle_index)
+                if profile.swing_signal_timeframe_minutes > 0:
+                    _open_position(state, candle, candle_index, strategy, profile, signal)
+                else:
+                    state.pending = PendingEntry(signal=signal, created_at_index=candle_index)
 
 
 # ---------------------------------------------------------------------------
@@ -119,8 +131,56 @@ def _update_position_tracking(position: Position, candle: Candle) -> None:
 # Target ladder advancement
 # ---------------------------------------------------------------------------
 
-def _advance_targets(pos: Position, candle: Candle) -> None:
+def _trade_cooldown_elapsed(state: EngineState, candle: Candle, profile: StrategyProfile) -> bool:
+    if profile.min_minutes_between_trades <= 0 or state.last_exit_time <= 0:
+        return True
+    return (candle.time - state.last_exit_time) >= profile.min_minutes_between_trades * 60
+
+
+def _loss_streak_pause_active(state: EngineState, candle: Candle, profile: StrategyProfile) -> bool:
+    if profile.loss_streak_pause_count <= 0 or profile.loss_streak_pause_minutes <= 0:
+        return False
+    return state.pause_until_time > 0 and candle.time < state.pause_until_time
+
+
+def _may_seek_new_entry(state: EngineState, candle: Candle, profile: StrategyProfile) -> bool:
+    if _loss_streak_pause_active(state, candle, profile):
+        return False
+    return _trade_cooldown_elapsed(state, candle, profile)
+
+
+def _max_loss_points(profile: StrategyProfile) -> int:
+    if profile.max_loss_points_per_trade is not None:
+        return profile.max_loss_points_per_trade
+    return cfg.MAX_LOSS_POINTS_PER_TRADE
+
+
+def _stop_buffer_points(profile: StrategyProfile) -> int:
+    if profile.stop_buffer_points is not None:
+        return profile.stop_buffer_points
+    return cfg.STOP_BUFFER_POINTS
+
+
+def _fee_lock_points(profile: StrategyProfile) -> int:
+    if profile.fee_lock_points is not None:
+        return profile.fee_lock_points
+    return cfg.FEE_LOCK_POINTS
+
+
+def _favorable_points(pos: Position) -> float:
+    if pos.direction == "long":
+        return pos.best_price - pos.entry_price
+    return pos.entry_price - pos.best_price
+
+
+def _advance_targets(
+    pos: Position,
+    candle: Candle,
+    profile: StrategyProfile,
+    candle_index: int,
+) -> None:
     """Check each target in sequence and advance stop loss on hits."""
+    candles_in_trade = candle_index - pos.entry_index
     for target_idx in range(pos.targets_hit, len(pos.target_prices)):
         target_price = pos.target_prices[target_idx]
         hit = (
@@ -130,13 +190,22 @@ def _advance_targets(pos: Position, candle: Candle) -> None:
         if not hit:
             break
 
-        # TP1: move stop to entry +- FEE_LOCK_POINTS
-        # TP2+: move stop to previous target price
-        if target_idx == 0:
+        pos.targets_hit = target_idx + 1
+
+        if candles_in_trade < profile.min_candles_before_stop_tighten:
+            continue
+        if profile.min_favorable_points_before_stop_tighten > 0:
+            if _favorable_points(pos) < profile.min_favorable_points_before_stop_tighten:
+                continue
+        if target_idx < profile.fee_lock_after_target_index:
+            continue
+
+        lock_pts = _fee_lock_points(profile)
+        if target_idx == profile.fee_lock_after_target_index:
             new_stop = (
-                pos.entry_price + cfg.FEE_LOCK_POINTS
+                pos.entry_price + lock_pts
                 if pos.direction == "long"
-                else pos.entry_price - cfg.FEE_LOCK_POINTS
+                else pos.entry_price - lock_pts
             )
         else:
             new_stop = pos.target_prices[target_idx - 1]
@@ -146,20 +215,24 @@ def _advance_targets(pos: Position, candle: Candle) -> None:
         else:
             pos.stop_loss = min(pos.stop_loss, new_stop)
 
-        pos.targets_hit = target_idx + 1
-
 
 # ---------------------------------------------------------------------------
 # Trailing stop (B7: fixed point distances matching TS)
 # ---------------------------------------------------------------------------
 
-def _update_trailing_stop(pos: Position, candle: Candle) -> None:
+def _trailing_min_targets_hit(profile: StrategyProfile) -> int:
+    if profile.trailing_min_targets_hit is not None:
+        return profile.trailing_min_targets_hit
+    return cfg.TRAILING_MIN_TARGETS_HIT
+
+
+def _update_trailing_stop(pos: Position, candle: Candle, profile: StrategyProfile) -> None:
     """
     Trailing stop activates after TRAILING_MIN_TARGETS_HIT targets are hit
     AND favorable move exceeds TRAILING_ACTIVATION_POINTS.
     Uses fixed distances: 55/75/95 pts depending on move size. (B7)
     """
-    if pos.targets_hit < cfg.TRAILING_MIN_TARGETS_HIT:
+    if pos.targets_hit < _trailing_min_targets_hit(profile):
         return
 
     if pos.direction == "long":
@@ -189,39 +262,128 @@ def _update_trailing_stop(pos: Position, candle: Candle) -> None:
             pos.trailing_stop = candidate
 
 
+def _update_swing_trailing_stop(pos: Position, candle: Candle, profile: StrategyProfile) -> None:
+    if profile.swing_trail_start_points <= 0 or profile.swing_trail_distance_points <= 0:
+        return
+
+    if pos.direction == "long":
+        best = max(pos.best_price, candle.high)
+        move = best - pos.entry_price
+        if move < profile.swing_trail_start_points:
+            return
+        candidate = best - profile.swing_trail_distance_points
+        if pos.trailing_stop is None or candidate > pos.trailing_stop:
+            pos.trailing_stop = candidate
+    else:
+        best = min(pos.best_price, candle.low)
+        move = pos.entry_price - best
+        if move < profile.swing_trail_start_points:
+            return
+        candidate = best + profile.swing_trail_distance_points
+        if pos.trailing_stop is None or candidate < pos.trailing_stop:
+            pos.trailing_stop = candidate
+
+
 # ---------------------------------------------------------------------------
 # System exits (order matches TS: stop loss -> take profit -> trailing stop)
 # ---------------------------------------------------------------------------
+
+def _is_profitable_stop(pos: Position) -> bool:
+    if pos.direction == "long":
+        return pos.stop_loss > pos.entry_price
+    return pos.stop_loss < pos.entry_price
+
+
+def _profit_stop_reversal_close_hit(pos: Position, candle: Candle) -> bool:
+    if pos.direction == "long":
+        return candle.close <= pos.stop_loss and candle.close < candle.open
+    return candle.close >= pos.stop_loss and candle.close > candle.open
+
 
 def _check_system_exits(
     state: EngineState,
     candle: Candle,
     candle_index: int,
+    profile: StrategyProfile,
 ) -> bool:
     pos = state.position
     assert pos is not None
 
+    if profile.swing_signal_timeframe_minutes > 0:
+        return _check_swing_system_exits(state, candle, candle_index, profile)
+
     if pos.direction == "long":
         if candle.low <= pos.stop_loss:
-            _close_position(state, candle, candle_index, "stopLoss", pos.stop_loss)
-            return True
+            if (
+                not profile.profit_stop_requires_reversal_close
+                or not _is_profitable_stop(pos)
+                or _profit_stop_reversal_close_hit(pos, candle)
+            ):
+                _close_position(state, candle, candle_index, "stopLoss", pos.stop_loss, profile)
+                return True
         if candle.high >= pos.take_profit:
-            _close_position(state, candle, candle_index, "takeProfit", pos.take_profit)
+            _close_position(state, candle, candle_index, "takeProfit", pos.take_profit, profile)
             return True
         if pos.trailing_stop is not None and candle.low <= pos.trailing_stop:
-            _close_position(state, candle, candle_index, "trailingStop", pos.trailing_stop)
+            _close_position(state, candle, candle_index, "trailingStop", pos.trailing_stop, profile)
             return True
     else:
         if candle.high >= pos.stop_loss:
-            _close_position(state, candle, candle_index, "stopLoss", pos.stop_loss)
-            return True
+            if (
+                not profile.profit_stop_requires_reversal_close
+                or not _is_profitable_stop(pos)
+                or _profit_stop_reversal_close_hit(pos, candle)
+            ):
+                _close_position(state, candle, candle_index, "stopLoss", pos.stop_loss, profile)
+                return True
         if candle.low <= pos.take_profit:
-            _close_position(state, candle, candle_index, "takeProfit", pos.take_profit)
+            _close_position(state, candle, candle_index, "takeProfit", pos.take_profit, profile)
             return True
         if pos.trailing_stop is not None and candle.high >= pos.trailing_stop:
-            _close_position(state, candle, candle_index, "trailingStop", pos.trailing_stop)
+            _close_position(state, candle, candle_index, "trailingStop", pos.trailing_stop, profile)
             return True
 
+    return False
+
+
+def _check_swing_system_exits(
+    state: EngineState,
+    candle: Candle,
+    candle_index: int,
+    profile: StrategyProfile,
+) -> bool:
+    pos = state.position
+    assert pos is not None
+    holding_minutes = max(0, candle.time - pos.entry_time) // 60
+
+    if pos.direction == "long":
+        if candle.close <= pos.stop_loss and candle.close < candle.open:
+            _close_position(state, candle, candle_index, "stopLoss", pos.stop_loss, profile)
+            return True
+        if (
+            pos.trailing_stop is not None
+            and holding_minutes >= profile.swing_min_profit_hold_minutes
+            and candle.close <= pos.trailing_stop
+            and candle.close < candle.open
+        ):
+            _close_position(state, candle, candle_index, "trailingStop", pos.trailing_stop, profile)
+            return True
+    else:
+        if candle.close >= pos.stop_loss and candle.close > candle.open:
+            _close_position(state, candle, candle_index, "stopLoss", pos.stop_loss, profile)
+            return True
+        if (
+            pos.trailing_stop is not None
+            and holding_minutes >= profile.swing_min_profit_hold_minutes
+            and candle.close >= pos.trailing_stop
+            and candle.close > candle.open
+        ):
+            _close_position(state, candle, candle_index, "trailingStop", pos.trailing_stop, profile)
+            return True
+
+    if profile.swing_max_hold_minutes > 0 and holding_minutes >= profile.swing_max_hold_minutes:
+        _close_position(state, candle, candle_index, "strategyExit", candle.close, profile)
+        return True
     return False
 
 
@@ -231,11 +393,12 @@ def _check_strategy_exit(
     indicators: IndicatorSet,
     candle_index: int,
     strategy: StrategyInterface,
+    profile: StrategyProfile,
 ) -> bool:
     pos = state.position
     assert pos is not None
-    if strategy.evaluate_exit(pos, candle, indicators, candle_index):
-        _close_position(state, candle, candle_index, "strategyExit", candle.close)
+    if strategy.evaluate_exit(pos, candle, indicators, candle_index, profile):
+        _close_position(state, candle, candle_index, "strategyExit", candle.close, profile)
         return True
     return False
 
@@ -348,15 +511,32 @@ def _open_position(
 ) -> None:
     entry_price = sig.confirm_price
 
-    if sig.direction == "long":
-        raw_stop = sig.candle.low - cfg.STOP_BUFFER_POINTS
-        stop_loss = max(raw_stop, entry_price - cfg.MAX_LOSS_POINTS_PER_TRADE)
+    max_loss = _max_loss_points(profile)
+    if profile.swing_signal_timeframe_minutes > 0:
+        if sig.direction == "long":
+            stop_loss = entry_price - max_loss
+        else:
+            stop_loss = entry_price + max_loss
     else:
-        raw_stop = sig.candle.high + cfg.STOP_BUFFER_POINTS
-        stop_loss = min(raw_stop, entry_price + cfg.MAX_LOSS_POINTS_PER_TRADE)
+        stop_buf = _stop_buffer_points(profile)
+        if sig.direction == "long":
+            raw_stop = sig.candle.low - stop_buf
+            stop_loss = max(raw_stop, entry_price - max_loss)
+        else:
+            raw_stop = sig.candle.high + stop_buf
+            stop_loss = min(raw_stop, entry_price + max_loss)
 
-    targets = build_target_ladder(entry_price, stop_loss, sig.direction)
-    take_profit = targets[-1]
+    if profile.swing_signal_timeframe_minutes > 0 and profile.swing_disable_take_profit:
+        far_take_profit_points = max(2000, profile.swing_trail_start_points * 10)
+        take_profit = (
+            entry_price + far_take_profit_points
+            if sig.direction == "long"
+            else entry_price - far_take_profit_points
+        )
+        targets = [take_profit]
+    else:
+        targets = build_target_ladder(entry_price, stop_loss, sig.direction)
+        take_profit = targets[-1]
     quantity = strategy.get_quantity(profile, sig.score)
 
     pos = Position(
@@ -389,6 +569,7 @@ def _close_position(
     candle_index: int,
     reason: str,
     exit_price: float,
+    profile: StrategyProfile,
 ) -> None:
     pos = state.position
     assert pos is not None
@@ -454,6 +635,18 @@ def _close_position(
     )
 
     state.trades.append(trade)
+    state.last_exit_time = candle.time
+    if net_pnl < 0:
+        state.consecutive_losses += 1
+        if (
+            profile.loss_streak_pause_count > 0
+            and profile.loss_streak_pause_minutes > 0
+            and state.consecutive_losses >= profile.loss_streak_pause_count
+        ):
+            state.pause_until_time = candle.time + profile.loss_streak_pause_minutes * 60
+    else:
+        state.consecutive_losses = 0
+        state.pause_until_time = 0
     state.position = None
 
 
@@ -461,6 +654,7 @@ def close_open_position_end_of_data(
     state: EngineState,
     candles: list[Candle],
     candle_index: int,
+    profile: StrategyProfile,
     *,
     is_backtest: bool = False,
 ) -> None:
@@ -470,4 +664,4 @@ def close_open_position_end_of_data(
         and candle_index == len(candles) - 1
     ):
         last = candles[candle_index]
-        _close_position(state, last, candle_index, "endOfData", last.close)
+        _close_position(state, last, candle_index, "endOfData", last.close, profile)

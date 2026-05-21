@@ -610,7 +610,7 @@ object LocalBotEngine {
     }
 
     private fun quantityForProfile(profileId: String, score: Int): Int {
-        if (profileId != "scaled_units") return 1
+        if (profileId != "scaled_units" && profileId != "scaled_units_long_hold") return 1
         return when {
             score >= 12 -> 3
             score >= 10 -> 2
@@ -619,6 +619,8 @@ object LocalBotEngine {
     }
 
     private fun longProtectionEnabled(profileId: String): Boolean {
-        return profileId == "long_protection" || profileId == "scaled_units"
+        return profileId == "long_protection" ||
+            profileId == "scaled_units" ||
+            profileId == "scaled_units_long_hold"
     }
 }

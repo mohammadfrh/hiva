@@ -28,7 +28,12 @@ import org.linphone.incomingcall.hiva.CaptchaImageResponse
 
 class BotSettingsFragment : Fragment(R.layout.fragment_bot_settings) {
     private var captchaKey: String = ""
-    private val profiles = listOf("baseline", "long_protection", "scaled_units")
+    private val profiles = listOf(
+        "baseline",
+        "long_protection",
+        "scaled_units",
+        "scaled_units_long_hold"
+    )
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val app = requireActivity().application as IncomingCallApp
