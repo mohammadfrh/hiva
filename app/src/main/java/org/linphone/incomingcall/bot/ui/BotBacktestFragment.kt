@@ -8,6 +8,7 @@ import android.util.Log
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.fragment.app.Fragment
@@ -21,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.linphone.incomingcall.R
+import org.linphone.incomingcall.IncomingCallApp
 import org.linphone.incomingcall.bot.local.LocalDataStore
 import org.linphone.incomingcall.bot.local.LocalBotRuntime
 import org.linphone.incomingcall.bot.prettyJson
@@ -37,6 +39,7 @@ import kotlin.math.max
 
 class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
     private val tag = "BT_UI"
+    private val swingProfileId = "scaled_units_long_hold"
     /** Tehran — same zone as trade times in the UI. */
     private val tradeZone: ZoneId = ZoneId.of("Asia/Tehran")
     private val profiles = listOf(
@@ -54,8 +57,10 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val out = view.findViewById<TextView>(R.id.textBacktestOut)
         val allTradesTitle = view.findViewById<TextView>(R.id.textAllTradesTitle)
+        val app = requireActivity().application as IncomingCallApp
         datasetSpinner = view.findViewById(R.id.spinnerDataset)
         val profileSpinner = view.findViewById<Spinner>(R.id.spinnerProfile)
+        val swingUnitsInput = view.findViewById<EditText>(R.id.editSwingUnits)
         val summary = view.findViewById<TextView>(R.id.textBacktestSummary)
         val run = view.findViewById<Button>(R.id.buttonRunBacktest)
         val get = view.findViewById<Button>(R.id.buttonGetBacktestResult)
@@ -87,6 +92,7 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, profiles)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         profileSpinner.adapter = adapter
+        swingUnitsInput.setText(app.botPrefs.swingUnits.toString())
         datasetAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, datasetOptions)
         datasetAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         datasetSpinner.adapter = datasetAdapter
@@ -98,11 +104,14 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
                 return@setOnClickListener
             }
             val pf = profileSpinner.selectedItem?.toString().orEmpty().ifBlank { "baseline" }
-            Log.i(tag, "Run clicked dataset=$ds profile=$pf")
+            val swingUnits = swingUnitsInput.text.toString().toIntOrNull()?.coerceIn(1, 4) ?: app.botPrefs.swingUnits
+            app.botPrefs.swingUnits = swingUnits
+            val requestedUnits = if (pf == swingProfileId) swingUnits else 0
+            Log.i(tag, "Run clicked dataset=$ds profile=$pf requestedUnits=$requestedUnits")
             Log.i(tag, "Backtest will use selected dataset=$ds")
             out.text = getString(R.string.loading)
             viewLifecycleOwner.lifecycleScope.launch {
-                val res = LocalBotRuntime.marketBacktest(pf, ds, store)
+                val res = LocalBotRuntime.marketBacktest(pf, ds, store, requestedUnits)
                 Log.i(
                     tag,
                     "Run result dataset=$ds profile=$pf trades=${res.get("trade_count")} win=${res.get("win_rate")} net=${res.get("net_profit")}"
@@ -110,9 +119,10 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
                 val row = JsonObject().apply {
                     addProperty("dataset", ds)
                     addProperty("profile", pf)
+                    addProperty("requested_units", requestedUnits)
                     add("trades", res.arrayValue("trades"))
                     val traceText = withContext(Dispatchers.Default) {
-                        buildBacktestTraceText(ds, pf, res, store)
+                        buildBacktestTraceText(ds, pf, res, store, requestedUnits)
                     }
                     addProperty("trace_text", traceText)
                     add("summary", JsonObject().apply {
@@ -143,11 +153,15 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
         get.setOnClickListener {
             val ds = datasetSpinner.selectedItem?.toString().orEmpty()
             val pf = profileSpinner.selectedItem?.toString().orEmpty().ifBlank { "baseline" }
-            Log.i(tag, "Get clicked dataset=$ds profile=$pf localRows=${localRows.size}")
+            val swingUnits = swingUnitsInput.text.toString().toIntOrNull()?.coerceIn(1, 4) ?: app.botPrefs.swingUnits
+            val requestedUnits = if (pf == swingProfileId) swingUnits else 0
+            Log.i(tag, "Get clicked dataset=$ds profile=$pf requestedUnits=$requestedUnits localRows=${localRows.size}")
             out.text = getString(R.string.loading)
             viewLifecycleOwner.lifecycleScope.launch {
                 val hit = localRows.firstOrNull {
-                    it.get("dataset")?.asString == ds && it.get("profile")?.asString == pf
+                    it.get("dataset")?.asString == ds &&
+                        it.get("profile")?.asString == pf &&
+                        it.intValue("requested_units", 0) == requestedUnits
                 }
                 if (hit != null) {
                     bindResultSummary(hit, summary)
@@ -179,12 +193,15 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
             }
             Log.i(tag, "RunAll clicked dataset=$ds profiles=${profiles.joinToString(",")}")
             Log.i(tag, "RunAll will use selected dataset=$ds")
+            val swingUnits = swingUnitsInput.text.toString().toIntOrNull()?.coerceIn(1, 4) ?: app.botPrefs.swingUnits
+            app.botPrefs.swingUnits = swingUnits
             out.text = getString(R.string.loading)
             viewLifecycleOwner.lifecycleScope.launch {
                 val profilesRun = JsonArray()
                 val listJson = JsonArray()
                 profiles.forEach { pf ->
-                    val s = LocalBotRuntime.marketBacktest(pf, ds, store)
+                    val requestedUnits = if (pf == swingProfileId) swingUnits else 0
+                    val s = LocalBotRuntime.marketBacktest(pf, ds, store, requestedUnits)
                     Log.i(
                         tag,
                         "RunAll result dataset=$ds profile=$pf trades=${s.get("trade_count")} win=${s.get("win_rate")} net=${s.get("net_profit")}"
@@ -198,9 +215,10 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
                     val row = JsonObject().apply {
                         addProperty("dataset", ds)
                         addProperty("profile", pf)
+                        addProperty("requested_units", requestedUnits)
                         add("trades", s.arrayValue("trades"))
                         val traceText = withContext(Dispatchers.Default) {
-                            buildBacktestTraceText(ds, pf, s, store)
+                            buildBacktestTraceText(ds, pf, s, store, requestedUnits)
                         }
                         addProperty("trace_text", traceText)
                         add("summary", JsonObject().apply {
@@ -490,7 +508,8 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
         dataset: String,
         profile: String,
         result: JsonObject,
-        store: LocalDataStore
+        store: LocalDataStore,
+        requestedUnits: Int = 0
     ): String {
         val trades = result.arrayValue("trades")
         val tradeCount = result.intValue("trade_count", trades.size())
@@ -510,7 +529,7 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
 
         val trace = buildString {
             appendLine("=== BACKTEST TRACE ===")
-            appendLine("dataset=$dataset | profile=$profile")
+            appendLine("dataset=$dataset | profile=$profile | requestedUnits=${if (requestedUnits > 0) requestedUnits else "-"}")
             appendLine("trades=$tradeCount wins=$winCount losses=$lossCount winRate=${formatPercent(winRate)} net=${formatCompactMoney(net, withSign = true)} fees=${formatCompactMoney(fees, withSign = false)}")
             appendLine("firstEntry=${formatEpoch(firstEntry)} lastExit=${formatEpoch(lastExit)}")
             appendLine("--- TRADE ROWS ---")
@@ -545,7 +564,7 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
                 }
             }
             appendLine("--- AUTO TRADE CANDLE REPLAY ---")
-            append(buildAutoTradeReplayTrace(dataset, profile, trades, store))
+            append(buildAutoTradeReplayTrace(dataset, profile, trades, store, requestedUnits))
             appendLine()
             append("=== END TRACE ===")
         }
@@ -607,7 +626,8 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
         dataset: String,
         profile: String,
         trades: JsonArray,
-        store: LocalDataStore
+        store: LocalDataStore,
+        requestedUnits: Int = 0
     ): String {
         val candles1m = store.loadDatasetCandles(dataset, "1")
         if (candles1m.isEmpty()) {
@@ -664,7 +684,8 @@ class BotBacktestFragment : Fragment(R.layout.fragment_bot_backtest) {
             val signal = LocalBotRuntime.marketSignalFromCandles(
                 profileId = profile,
                 candles = visible1m,
-                preloadedMtf = mtfVisible
+                preloadedMtf = mtfVisible,
+                requestedUnits = requestedUnits
             )
             val signalType = signal.stringValue("type", "no_signal")
             val signalReason = signal.stringValue("reason", signal.stringValue("exit_reason", "-")).ifBlank { "-" }

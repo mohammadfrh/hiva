@@ -32,7 +32,7 @@ import java.util.Locale
 
 class AutoTradeActivity : AppCompatActivity() {
     private val tag = "BT_AUTO_UI"
-    private val profiles = listOf("baseline", "long_protection", "scaled_units")
+    private val profiles = listOf("baseline", "long_protection", "scaled_units", "scaled_units_long_hold")
     private val unitChoices = listOf(1, 2, 3, 4)
     private lateinit var textTop: TextView
     private lateinit var textSession: TextView
@@ -101,13 +101,14 @@ class AutoTradeActivity : AppCompatActivity() {
         val unitAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, unitChoices.map { it.toString() })
         unitAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         unitsSpinner.adapter = unitAdapter
-        unitsSpinner.setSelection(2) // default 3 units
+        unitsSpinner.setSelection(unitChoices.indexOf(app.botPrefs.swingUnits).coerceAtLeast(0))
 
         findViewById<Button>(R.id.buttonStartTrade).setOnClickListener {
             val selected = strategySpinner.selectedItem?.toString().orEmpty().ifBlank { "baseline" }
             val units = unitsSpinner.selectedItem?.toString()?.toIntOrNull() ?: 3
             val testMode = testModeSwitch.isChecked
             app.botPrefs.localProfileId = selected
+            if (selected == "scaled_units_long_hold") app.botPrefs.swingUnits = units
             Log.i(tag, "start clicked profile=$selected units=$units testMode=$testMode")
             startTradeWithNotificationPermission(selected, units, testMode)
         }

@@ -661,7 +661,14 @@ class AutoTradeService : Service() {
             )
         }
         var signal = if (shouldProcessClosedCandle) {
-            runCatching { LocalBotRuntime.marketSignalFromCandles(profileId, signalCandles, mtfSnapshot) }.getOrElse { err ->
+            runCatching {
+                LocalBotRuntime.marketSignalFromCandles(
+                    profileId = profileId,
+                    candles = signalCandles,
+                    preloadedMtf = mtfSnapshot,
+                    requestedUnits = activeUnits
+                )
+            }.getOrElse { err ->
                 errorMessage = mergeError(errorMessage, "signal failed: ${err.message}")
                 JsonObject().apply {
                     addProperty("type", "no_signal")
@@ -725,7 +732,8 @@ class AutoTradeService : Service() {
                 candles = signalCandles,
                 fromExclusive = lastProcessedCandleTimeSec,
                 toInclusive = currentClosedCandleTime,
-                preloadedMtf = mtfSnapshot
+                preloadedMtf = mtfSnapshot,
+                requestedUnits = activeUnits
             )
             recoveryReplayMode = recovery.mode
             recoveryReplayRuns = recovery.replayRuns
@@ -813,7 +821,8 @@ class AutoTradeService : Service() {
                 preloadedMtf = mtfSnapshot,
                 currentClosedCandleTime = currentClosedCandleTime,
                 engineEntryTimeSec = engineEntryTimeSec,
-                expectedDirection = signalDirection
+                expectedDirection = signalDirection,
+                requestedUnits = activeUnits
             )
         } else {
             RecoverEntryParity(confirmed = false, code = "not_checked", detail = "not_checked")
@@ -984,7 +993,8 @@ class AutoTradeService : Service() {
                 LocalBotRuntime.marketBacktestFromCandles(
                     profileId = profileId,
                     candles = signalCandles,
-                    preloadedMtf = mtfSnapshot
+                    preloadedMtf = mtfSnapshot,
+                    requestedUnits = activeUnits
                 )
             }.getOrElse { err ->
                 errorMessage = mergeError(errorMessage, "backtest failed: ${err.message}")
@@ -2291,7 +2301,8 @@ class AutoTradeService : Service() {
         candles: List<org.linphone.incomingcall.bot.local.LocalCandle>,
         fromExclusive: Long,
         toInclusive: Long,
-        preloadedMtf: Map<Int, List<LocalCandle>>
+        preloadedMtf: Map<Int, List<LocalCandle>>,
+        requestedUnits: Int
     ): RecoveryResult {
         if (candles.isEmpty()) {
             return RecoveryResult(
@@ -2332,7 +2343,14 @@ class AutoTradeService : Service() {
             val slice = candles.subList(0, endExclusive)
             if (slice.size < 2) continue
             Log.d(TAG, "replay step mode=full candle=$t size=${slice.size}")
-            last = runCatching { LocalBotRuntime.marketSignalFromCandles(profileId, slice, preloadedMtf) }
+            last = runCatching {
+                LocalBotRuntime.marketSignalFromCandles(
+                    profileId = profileId,
+                    candles = slice,
+                    preloadedMtf = preloadedMtf,
+                    requestedUnits = requestedUnits
+                )
+            }
                 .getOrElse {
                     JsonObject().apply {
                         addProperty("type", "no_signal")
@@ -2353,7 +2371,8 @@ class AutoTradeService : Service() {
         preloadedMtf: Map<Int, List<LocalCandle>>?,
         currentClosedCandleTime: Long,
         engineEntryTimeSec: Long,
-        expectedDirection: String
+        expectedDirection: String,
+        requestedUnits: Int
     ): RecoverEntryParity {
         if (engineEntryTimeSec <= 0L) {
             return RecoverEntryParity(confirmed = false, code = "missing_entry_time", detail = "missing_entry_time")
@@ -2377,7 +2396,8 @@ class AutoTradeService : Service() {
             LocalBotRuntime.marketSignalFromCandles(
                 profileId = profileId,
                 candles = replaySlice,
-                preloadedMtf = preloadedMtf
+                preloadedMtf = preloadedMtf,
+                requestedUnits = requestedUnits
             )
         }.getOrElse { err ->
             return RecoverEntryParity(

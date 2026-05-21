@@ -1,13 +1,34 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from src.engine.backtester import run_backtest
 from src.engine.live_signal import evaluate_live_signal
 from src.logger import export_backtest_results
 from src.services.mock_data import load_dataset
 from src.strategies import PROFILES
 from src.types import Candle
+
+
+SWING_PROFILE_ID = "scaled_units_long_hold"
+
+
+def _profile_for_units(profile_id: str, requested_units):
+    profile = PROFILES[profile_id]
+    try:
+        units = int(requested_units)
+    except Exception:
+        units = 0
+    if profile_id == SWING_PROFILE_ID and units > 0:
+        units = max(1, min(4, units))
+        return replace(
+            profile,
+            sizing_mode="fixed",
+            base_quantity=units,
+            max_quantity_cap=units,
+            min_score_for_two_units=0,
+        )
+    return profile
 
 
 def _summary_payload(summary) -> dict:
@@ -34,6 +55,7 @@ def run_dataset_backtest_json(
     dataset_id: str,
     mock_dir: str,
     outputs_dir: str | None = None,
+    requested_units=0,
 ) -> str:
     if profile_id not in PROFILES:
         raise ValueError(f"Unknown profile: {profile_id}")
@@ -42,7 +64,7 @@ def run_dataset_backtest_json(
     if not candles_1m:
         raise ValueError(f"Dataset has no 1m candles: {dataset_id}")
     mtf = {k: v for k, v in candles_by_tf.items() if k != "1m"}
-    summary = run_backtest(dataset_id, PROFILES[profile_id], candles_1m, mtf)
+    summary = run_backtest(dataset_id, _profile_for_units(profile_id, requested_units), candles_1m, mtf)
     if outputs_dir:
         export_backtest_results(summary, dataset_id, profile_id, outputs_dir)
     return json.dumps(_summary_payload(summary))
@@ -53,6 +75,7 @@ def run_payload_backtest_json(
     candles_1m_payload,
     mtf_payload,
     dataset_name: str = "live",
+    requested_units=0,
 ) -> str:
     if profile_id not in PROFILES:
         raise ValueError(f"Unknown profile: {profile_id}")
@@ -65,7 +88,7 @@ def run_payload_backtest_json(
         for tf, arr in (mtf_raw or {}).items()
     }
 
-    summary = run_backtest(dataset_name, PROFILES[profile_id], candles_1m, mtf)
+    summary = run_backtest(dataset_name, _profile_for_units(profile_id, requested_units), candles_1m, mtf)
     return json.dumps(_summary_payload(summary))
 
 
@@ -73,6 +96,7 @@ def run_payload_signal_json(
     profile_id: str,
     candles_1m_payload,
     mtf_payload,
+    requested_units=0,
 ) -> str:
     if profile_id not in PROFILES:
         raise ValueError(f"Unknown profile: {profile_id}")
@@ -83,6 +107,6 @@ def run_payload_signal_json(
         tf: [Candle(int(x["time"]), float(x["open"]), float(x["high"]), float(x["low"]), float(x["close"])) for x in arr]
         for tf, arr in (mtf_raw or {}).items()
     }
-    res = evaluate_live_signal(candles_1m, mtf, PROFILES[profile_id])
+    res = evaluate_live_signal(candles_1m, mtf, _profile_for_units(profile_id, requested_units))
     payload = asdict(res)
     return json.dumps(payload)

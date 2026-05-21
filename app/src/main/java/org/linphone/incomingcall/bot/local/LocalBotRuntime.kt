@@ -34,15 +34,16 @@ object LocalBotRuntime {
         return candles
     }
 
-    suspend fun marketSignal(profileId: String): JsonObject {
+    suspend fun marketSignal(profileId: String, requestedUnits: Int = 0): JsonObject {
         val candles = fetchCandles("1", 24)
-        return marketSignalFromCandles(profileId, candles)
+        return marketSignalFromCandles(profileId, candles, requestedUnits = requestedUnits)
     }
 
     suspend fun marketSignalFromCandles(
         profileId: String,
         candles: List<LocalCandle>,
-        preloadedMtf: Map<Int, List<LocalCandle>>? = null
+        preloadedMtf: Map<Int, List<LocalCandle>>? = null,
+        requestedUnits: Int = 0
     ): JsonObject {
         if (candles.isEmpty()) {
             return JsonObject().apply {
@@ -55,7 +56,7 @@ object LocalBotRuntime {
         } else {
             buildMtfForWindow(candles.first().time, candles.last().time)
         }
-        val signal = PythonBacktestBridge.runSignal(profileId, candles, mtf)
+        val signal = PythonBacktestBridge.runSignal(profileId, candles, mtf, requestedUnits)
         val exitReasonRaw = signal.stringValue("exit_reason", "")
         val exitPriceRaw = signal.doubleValue("exit_price", 0.0)
         val pnlPts = signal.doubleValue("pnl_price_points", 0.0)
@@ -79,7 +80,7 @@ object LocalBotRuntime {
         }
     }
 
-    suspend fun marketBacktest(profileId: String): JsonObject {
+    suspend fun marketBacktest(profileId: String, requestedUnits: Int = 0): JsonObject {
         Log.i(TAG, "marketBacktest start profile=$profileId")
         val candles = fetchCandles("1", 24)
         if (candles.isEmpty()) {
@@ -94,7 +95,7 @@ object LocalBotRuntime {
         }
         val mtf = buildMtfForWindow(candles.first().time, candles.last().time)
         logBacktestPayloadTrace("live24h", profileId, candles, mtf)
-        val summary = PythonBacktestBridge.runBacktest(profileId, candles, mtf)
+        val summary = PythonBacktestBridge.runBacktest(profileId, candles, mtf, requestedUnits)
         Log.i(
             TAG,
             "marketBacktest done profile=$profileId candles=${candles.size} trades=${summary.intValue("trade_count")} winRate=${summary.doubleValue("win_rate")} net=${summary.doubleValue("net_profit")} end=${summary.doubleValue("ending_balance")} pf=${summary.doubleValue("profit_factor")} dd=${summary.doubleValue("max_drawdown_percent")}"
@@ -105,7 +106,8 @@ object LocalBotRuntime {
     suspend fun marketBacktestFromCandles(
         profileId: String,
         candles: List<LocalCandle>,
-        preloadedMtf: Map<Int, List<LocalCandle>>? = null
+        preloadedMtf: Map<Int, List<LocalCandle>>? = null,
+        requestedUnits: Int = 0
     ): JsonObject {
         if (candles.isEmpty()) {
             return JsonObject().apply {
@@ -125,13 +127,13 @@ object LocalBotRuntime {
         }
         val payloadHash = computePayloadHash(candles, mtf)
         logBacktestPayloadTrace("from_candles", profileId, candles, mtf)
-        return PythonBacktestBridge.runBacktest(profileId, candles, mtf).apply {
+        return PythonBacktestBridge.runBacktest(profileId, candles, mtf, requestedUnits).apply {
             addProperty("_input_payload_hash", payloadHash)
             addProperty("_input_source", "from_candles")
         }
     }
 
-    suspend fun marketBacktest(profileId: String, datasetId: String, store: LocalDataStore): JsonObject {
+    suspend fun marketBacktest(profileId: String, datasetId: String, store: LocalDataStore, requestedUnits: Int = 0): JsonObject {
         Log.i(TAG, "marketBacktest(dataset) start profile=$profileId dataset=$datasetId")
         val pythonDatasetId = normalizeDatasetIdForPython(datasetId)
         val candles1m = store.loadDatasetCandles(datasetId, "1")
@@ -140,7 +142,7 @@ object LocalBotRuntime {
                 TAG,
                 "marketBacktest(dataset) empty dataset=$datasetId fallback=live24h available=${store.listDatasets().joinToString(",")}"
             )
-            return marketBacktest(profileId)
+            return marketBacktest(profileId, requestedUnits)
         }
         val first = candles1m.first()
         val last = candles1m.last()
@@ -188,7 +190,8 @@ object LocalBotRuntime {
                 profileId = profileId,
                 datasetId = pythonDatasetId,
                 mockDirPath = store.mockDirPath(),
-                outputsDirPath = store.outputsDirPath()
+                outputsDirPath = store.outputsDirPath(),
+                requestedUnits = requestedUnits
             )
         }.getOrElse { err ->
             Log.e(

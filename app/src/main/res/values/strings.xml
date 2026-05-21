@@ -83,6 +83,7 @@
     <string name="bot_invalid_order_input">Order input is invalid. Check price, stop loss, and take profit.</string>
     <string name="bot_invalid_direction">Direction must be long or short.</string>
     <string name="bot_run_all_strategies">Run All Strategies</string>
+    <string name="bot_swing_units_hint">Swing units for scaled_units_long_hold (1-4)</string>
     <string name="bot_all_trades_title">All trades</string>
     <string name="bot_trades_calendar_filtered">Trades — this calendar window (%1$d of %2$d)</string>
     <string name="bot_auto_trade">Auto Trade</string>

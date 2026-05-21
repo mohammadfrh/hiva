@@ -22,28 +22,30 @@ object PythonBacktestBridge {
     fun runBacktest(
         profileId: String,
         candles1m: List<LocalCandle>,
-        mtf: Map<Int, List<LocalCandle>>
+        mtf: Map<Int, List<LocalCandle>>,
+        requestedUnits: Int = 0
     ): JsonObject {
         ensureStarted()
         val py = Python.getInstance()
         val module = py.getModule("py_exact_backtest_runner")
         val candlesJson = gson.toJson(candles1m)
         val mtfJson = gson.toJson(mtf.mapKeys { "${it.key}m" })
-        val result = module.callAttr("run_payload_backtest_json", profileId, candlesJson, mtfJson, "live").toString()
+        val result = module.callAttr("run_payload_backtest_json", profileId, candlesJson, mtfJson, "live", requestedUnits).toString()
         return JsonParser.parseString(result).asJsonObject
     }
 
     fun runSignal(
         profileId: String,
         candles1m: List<LocalCandle>,
-        mtf: Map<Int, List<LocalCandle>>
+        mtf: Map<Int, List<LocalCandle>>,
+        requestedUnits: Int = 0
     ): JsonObject {
         ensureStarted()
         val py = Python.getInstance()
         val module = py.getModule("py_exact_backtest_runner")
         val candlesJson = gson.toJson(candles1m)
         val mtfJson = gson.toJson(mtf.mapKeys { "${it.key}m" })
-        val result = module.callAttr("run_payload_signal_json", profileId, candlesJson, mtfJson).toString()
+        val result = module.callAttr("run_payload_signal_json", profileId, candlesJson, mtfJson, requestedUnits).toString()
         return JsonParser.parseString(result).asJsonObject
     }
 
@@ -51,7 +53,8 @@ object PythonBacktestBridge {
         profileId: String,
         datasetId: String,
         mockDirPath: String,
-        outputsDirPath: String
+        outputsDirPath: String,
+        requestedUnits: Int = 0
     ): JsonObject {
         ensureStarted()
         val py = Python.getInstance()
@@ -61,7 +64,8 @@ object PythonBacktestBridge {
             profileId,
             datasetId,
             mockDirPath,
-            outputsDirPath
+            outputsDirPath,
+            requestedUnits
         ).toString()
         return JsonParser.parseString(result).asJsonObject
     }
