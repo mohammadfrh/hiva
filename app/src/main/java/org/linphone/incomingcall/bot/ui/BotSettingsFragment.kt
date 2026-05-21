@@ -1,6 +1,5 @@
 package org.linphone.incomingcall.bot.ui
 
-import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.view.View
 import android.widget.ArrayAdapter
@@ -18,11 +17,10 @@ import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.linphone.incomingcall.IncomingCallApp
 import org.linphone.incomingcall.R
 import org.linphone.incomingcall.bot.prettyJson
+import org.linphone.incomingcall.hiva.CaptchaImageLoader
 import org.linphone.incomingcall.hiva.HivaGoldClient
 import org.linphone.incomingcall.hiva.LoginRequest
 import org.linphone.incomingcall.hiva.LoginResponse
@@ -175,12 +173,8 @@ class BotSettingsFragment : Fragment(R.layout.fragment_bot_settings) {
                 captchaKey = json.captchaKey
                 val imageUrl = json.imageUrl
                 if (imageUrl.isNotBlank()) {
-                    val url = HivaGoldClient.BASE_URL.trimEnd('/') + "/api" + imageUrl
                     val bmp = withContext(Dispatchers.IO) {
-                        OkHttpClient().newCall(Request.Builder().url(url).build()).execute().use { resp ->
-                            if (!resp.isSuccessful) return@withContext null
-                            resp.body?.byteStream()?.use { BitmapFactory.decodeStream(it) }
-                        }
+                        CaptchaImageLoader.loadBitmapForPath(HivaGoldClient.okHttpClient, imageUrl)
                     }
                     if (bmp != null) image.setImageBitmap(bmp)
                 }

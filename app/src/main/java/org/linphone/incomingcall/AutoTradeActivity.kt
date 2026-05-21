@@ -112,8 +112,8 @@ class AutoTradeActivity : AppCompatActivity() {
             startTradeWithNotificationPermission(selected, units, testMode)
         }
         findViewById<Button>(R.id.buttonStopTrade).setOnClickListener {
-            Log.i(tag, "stop clicked closeAll=true")
-            AutoTradeService.stopAndClose(this)
+            Log.i(tag, "stop clicked closeActiveOnly=true")
+            AutoTradeService.stopAndCloseActive(this)
         }
 
         refreshPortfolioStateOnOpen()
@@ -314,7 +314,11 @@ class AutoTradeActivity : AppCompatActivity() {
             }
             result.onSuccess { (fallbackPrice, txJson, activeOrders) ->
                 val price = fallbackPrice
-                val open = txJson.getAsJsonArray("results")?.filter { it.asJsonObject.stringValue("status", "") == "open" }?.size ?: 0
+                val open = txJson.getAsJsonArray("open")?.size()
+                    ?: txJson.getAsJsonArray("results")?.count {
+                        it.asJsonObject.stringValue("status", "") == "open"
+                    }
+                    ?: 0
                 val pending = activeOrders.size
                 AutoTradeStateStore.update {
                     if (it.isRunning) it else it.copy(

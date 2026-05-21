@@ -318,12 +318,14 @@ class BotMarketFragment : Fragment(R.layout.fragment_bot_market) {
                 // Fetch new Mazaneh APIs
                 val status = HivaGoldClient.api.getMazanehStatus()
                 val txJson = HivaGoldClient.api.getMazanehTransactions(1)
-                val results = txJson.getAsJsonArray("results") ?: com.google.gson.JsonArray()
-                val openTx = com.google.gson.JsonArray()
-                val closedTx = com.google.gson.JsonArray()
-                results.forEach { 
-                    val obj = it.asJsonObject
-                    if (obj.get("status")?.asString == "open") openTx.add(obj) else closedTx.add(obj)
+                val openTx = txJson.getAsJsonArray("open") ?: com.google.gson.JsonArray()
+                val closedTx = txJson.getAsJsonArray("closed") ?: com.google.gson.JsonArray()
+                val legacyResults = txJson.getAsJsonArray("results")
+                if (legacyResults != null && openTx.size() == 0 && closedTx.size() == 0) {
+                    legacyResults.forEach {
+                        val obj = it.asJsonObject
+                        if (obj.get("status")?.asString == "open") openTx.add(obj) else closedTx.add(obj)
+                    }
                 }
                 
                 val orders = HivaGoldClient.api.getMazanehActiveOrders()
@@ -382,7 +384,12 @@ class BotMarketFragment : Fragment(R.layout.fragment_bot_market) {
         val now = System.currentTimeMillis() / 1000L
         val from = now - hours * 3600L
         return withContext(Dispatchers.IO) { 
-            val hivaBars = HivaGoldClient.api.getMazanehBars("mazaneh", from, now, tf)
+            val hivaBars = HivaGoldClient.api.getMazanehBars(
+                "mazaneh",
+                from,
+                now,
+                org.linphone.incomingcall.hiva.MazanehBarsResolution.toApi(tf)
+            )
             hivaBars.map { org.linphone.incomingcall.bot.local.LocalCandle(it.time, it.open, it.high, it.low, it.close) }
         }
     }

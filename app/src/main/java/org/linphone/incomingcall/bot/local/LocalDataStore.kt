@@ -146,6 +146,15 @@ class LocalDataStore(context: Context) {
         }
         val result = out.distinctBy { it.time }.sortedBy { it.time }
         Log.i(tag, "loadDatasetCandles loaded dataset=$datasetId candles=${result.size}")
+        if (dayPattern.matches(datasetId)) {
+            val expected = expectedCountForTf(tf)
+            if (expected != null && result.size > expected * 2) {
+                Log.w(
+                    tag,
+                    "loadDatasetCandles count=${result.size} expected~$expected for 1 day tf=${tf}m — file likely downloaded with old resolution=1 (sub-minute). Delete mock and re-download."
+                )
+            }
+        }
         return result
     }
 

@@ -22,7 +22,7 @@ class BotPrefs(context: Context) {
         private const val PREFS = "python_bot_prefs"
         private const val KEY_BACKEND_BASE_URL = "backend_base_url"
         private const val KEY_LOCAL_PROFILE_ID = "local_profile_id"
-        const val DEFAULT_BASE_URL = "https://demo.hivagold.org/"
+        const val DEFAULT_BASE_URL = "https://hivaex.ir/"
         const val DEFAULT_PROFILE_ID = "baseline"
     }
 }

@@ -45,12 +45,14 @@ class AutoTradeService : Service() {
         const val ACTION_START = "org.linphone.incomingcall.autotrade.START"
         const val ACTION_STOP = "org.linphone.incomingcall.autotrade.STOP"
         const val ACTION_STOP_AND_CLOSE = "org.linphone.incomingcall.autotrade.STOP_AND_CLOSE"
+        const val ACTION_STOP_AND_CLOSE_ACTIVE = "org.linphone.incomingcall.autotrade.STOP_AND_CLOSE_ACTIVE"
         const val EXTRA_PROFILE_ID = "extra_profile_id"
         const val EXTRA_UNITS = "extra_units"
         const val EXTRA_TEST_MODE = "extra_test_mode"
 
         private const val TAG = "BT_AUTO_SERVICE"
         private const val CHANNEL_ID = "auto_trade_channel"
+        private const val TRADE_EVENT_CHANNEL_ID = "auto_trade_events_channel"
         private const val NOTIFICATION_ID = 1042
         private const val LOOP_INTERVAL_MS = 30_000L
         private const val MIN_ORDER_RATE_LIMIT_COOLDOWN_SEC = 1L
@@ -96,11 +98,17 @@ class AutoTradeService : Service() {
         private const val MAX_PERSISTED_CANDLE_REVISION_ROWS = 1200
         private const val MAX_PERSISTED_POSITION_UPDATE_PROMOTE_ROWS = 1200
         private const val MAX_PERSISTED_FAST_RECHECK_ROWS = 1500
+        private const val MAX_PERSISTED_TRADE_LEDGER_ROWS = 1200
+        private const val MAX_PERSISTED_CYCLE_ANOMALY_ROWS = 900
+        private const val MAX_PERSISTED_SIGNAL_PAYLOAD_COMPACT_ROWS = 220
+        private const val MAX_SIGNAL_PAYLOAD_COMPACT_1M_TAIL = 8
+        private const val MAX_SIGNAL_PAYLOAD_COMPACT_MTF_TAIL = 4
+        private const val MAX_SIGNAL_PAYLOAD_COMPACT_JSON_CHARS = 1800
         private const val MAX_RECOVERY_REPLAY_RUNS = 180
         private const val PROTECTIVE_CLOSE_NO_SIGNAL_THRESHOLD = 3
         /** Bump when you want a clean prefs file on device (old XML left unused under shared_prefs). */
-        private const val PREFS_NAME = "auto_trade_service_prefs_v40"
-        private const val PREFS_NAME2 = "auto_trade_service_signal_payload_prefs_v40"
+        private const val PREFS_NAME = "auto_trade_service_prefs_v43"
+        private const val PREFS_NAME2 = "auto_trade_service_signal_payload_prefs_v43"
         private const val PREFS_NAME3 = "auto_trade_service_socket_prefs_v36"
         private val MTF_RESOLUTIONS = listOf(5, 15, 30, 60)
 
@@ -133,6 +141,12 @@ class AutoTradeService : Service() {
             Log.i(TAG, "dispatch stopAndClose action")
             context.startService(i)
         }
+
+        fun stopAndCloseActive(context: Context) {
+            val i = Intent(context, AutoTradeService::class.java).apply { action = ACTION_STOP_AND_CLOSE_ACTIVE }
+            Log.i(TAG, "dispatch stopAndCloseActive action")
+            context.startService(i)
+        }
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -148,6 +162,7 @@ class AutoTradeService : Service() {
     private var consecutiveCloseRateLimitHits: Int = 0
     private var orderAttempts: Int = 0
     private var ordersPlaced: Int = 0
+    private var tradeEventNotificationSeq: Int = 3000
     private var activeProfileId: String = "baseline"
     private var activeUnits: Int = 3
     private var testModeEnabled: Boolean = false
@@ -183,8 +198,9 @@ class AutoTradeService : Service() {
             "onStartCommand action=${intent?.action ?: "null"} profileExtra=${intent?.getStringExtra(EXTRA_PROFILE_ID)} unitsExtra=${intent?.getIntExtra(EXTRA_UNITS, -1)} testMode=${intent?.getBooleanExtra(EXTRA_TEST_MODE, false)}"
         )
         when (intent?.action) {
-            ACTION_STOP -> stopTrading(closeAll = false)
-            ACTION_STOP_AND_CLOSE -> stopTrading(closeAll = true)
+            ACTION_STOP -> stopTrading(closeMode = CloseMode.NONE)
+            ACTION_STOP_AND_CLOSE -> stopTrading(closeMode = CloseMode.ALL_WITH_PORTFOLIO)
+            ACTION_STOP_AND_CLOSE_ACTIVE -> stopTrading(closeMode = CloseMode.ACTIVE_ONLY)
             ACTION_START, null -> startTrading(
                 profileIdArg = intent?.getStringExtra(EXTRA_PROFILE_ID),
                 unitsArg = intent?.getIntExtra(EXTRA_UNITS, 3),
@@ -255,6 +271,11 @@ class AutoTradeService : Service() {
         Log.i(
             TAG,
             "startTrading initialized profile=$activeProfileId units=$activeUnits testMode=$testModeEnabled restoredLastCandle=$lastProcessedCandleTimeSec restoreAgeMin=$restoreAgeMin restoredIdemKeys=${executedEntryKeys.size} restoredCloseKeys=${executedCloseKeys.size}"
+        )
+        val hivaEp = HivaGoldClient.mazanehEndpoints()
+        Log.i(
+            TAG,
+            "hiva endpoints base=${HivaGoldClient.BASE_URL} api=${hivaEp.apiBase} wsPrice=${hivaEp.wsPrice} wsTrading=${hivaEp.wsTrading} wsLiveBars=${hivaEp.wsLiveBars} userInfo=${hivaEp.userInfo} tx=${hivaEp.transactions} orders=${hivaEp.ordersActive} portfolio=${hivaEp.portfolioActive} bars=${hivaEp.mazanehBars}"
         )
         marketWsClient.setSnapshotListener { snapshot ->
             publishSocketMarketSnapshot(snapshot)
@@ -351,6 +372,10 @@ class AutoTradeService : Service() {
                 append("mtf=").append(cacheMtf.entries.joinToString(",") { "${it.key}m:${it.value.size}" })
             }
         )
+        appendCycleAnomalyRow(
+            activeProfileId,
+            "OOM_RECOVER|$nowSec|${cache1m.lastOrNull()?.time ?: 0L}|trimmed1m=$before1m->${cache1m.size}"
+        )
         Log.e(
             TAG,
             "runCycle OOM recovered profile=$activeProfileId message=${oom.message ?: "-"} cache1m=$before1m->${cache1m.size}",
@@ -366,8 +391,14 @@ class AutoTradeService : Service() {
         return OOM_RECOVERY_BACKOFF_MS
     }
 
-    private fun stopTrading(closeAll: Boolean) {
-        Log.i(TAG, "stopTrading closeAll=$closeAll")
+    private enum class CloseMode {
+        NONE,
+        ACTIVE_ONLY,
+        ALL_WITH_PORTFOLIO
+    }
+
+    private fun stopTrading(closeMode: CloseMode) {
+        Log.i(TAG, "stopTrading closeMode=$closeMode")
         loopJob?.cancel()
         loopJob = null
         testRiskEditJob?.cancel()
@@ -375,13 +406,22 @@ class AutoTradeService : Service() {
         marketWsClient.setSnapshotListener(null)
         marketWsClient.stop()
         serviceScope.launch {
-            val closeResult = if (closeAll) closeAllActiveTradesAndOrdersAndPortfolio() else ""
-            Log.i(TAG, "stopTrading result closeAll=$closeAll closeResult=${closeResult.ifBlank { "ok" }}")
+            val closeResult = when (closeMode) {
+                CloseMode.NONE -> ""
+                CloseMode.ACTIVE_ONLY -> closeActiveTradesAndOrders(includePortfolio = false)
+                CloseMode.ALL_WITH_PORTFOLIO -> closeActiveTradesAndOrders(includePortfolio = true)
+            }
+            Log.i(TAG, "stopTrading result closeMode=$closeMode closeResult=${closeResult.ifBlank { "ok" }}")
+            val decisionText = when (closeMode) {
+                CloseMode.NONE -> "stopped"
+                CloseMode.ACTIVE_ONLY -> "stopped and closed active trades/orders"
+                CloseMode.ALL_WITH_PORTFOLIO -> "stopped and close-all requested"
+            }
             AutoTradeStateStore.update {
                 it.copy(
                     isRunning = false,
                     wsConnected = false,
-                    lastDecision = if (closeAll) "stopped and close-all requested" else "stopped",
+                    lastDecision = decisionText,
                     lastError = closeResult,
                     updatedAtEpochMs = System.currentTimeMillis()
                 )
@@ -679,6 +719,10 @@ class AutoTradeService : Service() {
                 TAG,
                 "recovery replay profile=$profileId mode=${recovery.mode} missed=$missedCandlesCount replayed=$replayed replayRuns=${recovery.replayRuns} from=$lastProcessedCandleTimeSec to=$currentClosedCandleTime signal=${signal.stringValue("type", "no_signal")}"
             )
+            appendCycleAnomalyRow(
+                profileId = profileId,
+                row = "RECOVERY_REPLAY|$nowSec|$currentClosedCandleTime|mode=${sanitizeAuditToken(recovery.mode)}|missed=$missedCandlesCount|replayed=$replayed|runs=${recovery.replayRuns}|sig=${sanitizeAuditToken(signal.stringValue("type", "no_signal"))}"
+            )
         }
         Log.i(TAG, "cycle signal ${summarizeSignal(signal)}")
 
@@ -776,6 +820,10 @@ class AutoTradeService : Service() {
                     "engineEntryTime=$engineEntryTimeSec deltaSec=${currentClosedCandleTime - engineEntryTimeSec} " +
                     "trigger=$trigger parity=${recoverEntryParity.detail}, promoting to entry signal"
             )
+            appendCycleAnomalyRow(
+                profileId = profileId,
+                row = "DRIFT_PROMOTE|$nowSec|$currentClosedCandleTime|kind=position_update|trigger=${sanitizeAuditToken(trigger)}|entryTime=$engineEntryTimeSec|parity=${sanitizeAuditToken(recoverEntryParity.code)}"
+            )
         } else if (shouldProcessClosedCandle &&
             signalType == "position_update" &&
             hasNoLiveExposure
@@ -839,6 +887,10 @@ class AutoTradeService : Service() {
                 Log.w(
                     TAG,
                     "state drift detected profile=$profileId candle=$currentClosedCandleTime engine=no_signal but broker has open=$openPositions (rest=$openPositionsRest); reusing last engine open snapshot dir=$snapDir"
+                )
+                appendCycleAnomalyRow(
+                    profileId = profileId,
+                    row = "DRIFT_RECOVER|$nowSec|$currentClosedCandleTime|kind=broker_open_engine_flat|snapDir=${sanitizeAuditToken(snapDir)}|openWs=$openPositions|openRest=$openPositionsRest"
                 )
             } else {
                 Log.w(
@@ -1259,6 +1311,14 @@ class AutoTradeService : Service() {
                                 profileId,
                                 "ORDER_OK|${nowSec}|${currentClosedCandleTime}|${sanitizeAuditToken(action)}|id=${sanitizeAuditToken(orderId)}|tp=$submitTake|sl=$submitStop|idem=${sanitizeAuditToken(idempotencyKey)}|mktDrift=$driftRecoverMarketRef"
                             )
+                            appendTradeLedgerRow(
+                                profileId,
+                                "ENTRY_OK|${nowSec}|${currentClosedCandleTime}|dir=${sanitizeAuditToken(signalDirection)}|action=${sanitizeAuditToken(action)}|entry=${entry.roundToInt()}|sl=$submitStop|tp=$submitTake|id=${sanitizeAuditToken(orderId)}|reason=${sanitizeAuditToken(signalReason).take(48)}"
+                            )
+                            notifyTradeEvent(
+                                title = "Trade Opened",
+                                body = "profile=$profileId action=$action units=$desiredUnits id=${orderId.ifBlank { "-" }} entry=${entry.roundToInt()} sl=$submitStop tp=$submitTake"
+                            )
                             val realOrderId = fetchTransactionIdAfterSubmit(
                                 phase = "primary",
                                 profileId = profileId,
@@ -1339,6 +1399,14 @@ class AutoTradeService : Service() {
                                     appendAuditDebugRow(
                                         profileId,
                                         "ORDER_OK_RETRY|${nowSec}|${currentClosedCandleTime}|${sanitizeAuditToken(action)}|id=${sanitizeAuditToken(retryOrderId)}|tp=$submitTake|sl=$submitStop|idem=${sanitizeAuditToken(idempotencyKey)}"
+                                    )
+                                    appendTradeLedgerRow(
+                                        profileId,
+                                        "ENTRY_OK_RETRY|${nowSec}|${currentClosedCandleTime}|dir=${sanitizeAuditToken(signalDirection)}|action=${sanitizeAuditToken(action)}|entry=${entry.roundToInt()}|sl=$submitStop|tp=$submitTake|id=${sanitizeAuditToken(retryOrderId)}|reason=${sanitizeAuditToken(signalReason).take(48)}"
+                                    )
+                                    notifyTradeEvent(
+                                        title = "Trade Opened (Retry)",
+                                        body = "profile=$profileId action=$action units=$desiredUnits id=${retryOrderId.ifBlank { "-" }} entry=${entry.roundToInt()} sl=$submitStop tp=$submitTake"
                                     )
                                     val realOrderId = fetchTransactionIdAfterSubmit(
                                         phase = "retry",
@@ -1561,10 +1629,26 @@ class AutoTradeService : Service() {
             errorMessage.isBlank() &&
             nowSec >= orderRateLimitUntilEpochSec &&
             nowSec >= closeRateLimitUntilEpochSec
+        val postCloseFastFollowup = hasNewClosedCandle &&
+            signalType == "no_signal" &&
+            hasNoLiveExposureAtGate &&
+            errorMessage.isBlank() &&
+            nowSec >= orderRateLimitUntilEpochSec &&
+            nowSec >= closeRateLimitUntilEpochSec
+        val staleClosedCandleChase = hasNoLiveExposureAtGate &&
+            errorMessage.isBlank() &&
+            nowSec >= orderRateLimitUntilEpochSec &&
+            nowSec >= closeRateLimitUntilEpochSec
         if (fastRecheckEnabled) {
             Log.i(
                 TAG,
                 "fast recheck enabled profile=$profileId candle=$currentClosedCandleTime intervalMs=$FAST_RECHECK_INTERVAL_MS"
+            )
+        }
+        if (postCloseFastFollowup) {
+            Log.i(
+                TAG,
+                "post-close fast follow-up profile=$profileId candle=$currentClosedCandleTime intervalMs=$FAST_RECHECK_INTERVAL_MS"
             )
         }
         val nextIntervalMs = computeNextCycleIntervalMs(
@@ -1576,7 +1660,9 @@ class AutoTradeService : Service() {
             currentClosedCandleStableChecks = currentClosedCandleStableChecks,
             recoveryMode = recoveryMode,
             hadError = errorMessage.isNotBlank(),
-            fastRecheckEnabled = fastRecheckEnabled
+            fastRecheckEnabled = fastRecheckEnabled,
+            preferFastFollowup = postCloseFastFollowup,
+            staleClosedCandleChase = staleClosedCandleChase
         )
         if (fastRecheckCandidate || shouldProbeSameCandleForDrift || fastRecheckEnabled) {
             appendFastRecheckRow(
@@ -1607,10 +1693,13 @@ class AutoTradeService : Service() {
         currentClosedCandleStableChecks: Int,
         recoveryMode: Boolean,
         hadError: Boolean,
-        fastRecheckEnabled: Boolean
+        fastRecheckEnabled: Boolean,
+        preferFastFollowup: Boolean,
+        staleClosedCandleChase: Boolean
     ): Long {
         if (hadError) return LOOP_INTERVAL_MS
         if (recoveryMode) return LOOP_INTERVAL_MS
+        if (preferFastFollowup) return FAST_RECHECK_INTERVAL_MS
         if (fastRecheckEnabled) return FAST_RECHECK_INTERVAL_MS
         if (hasObservedNewClosedCandle && !isNewClosedCandleStable) {
             val remainingMs = if (currentClosedCandleAgeMs < CLOSED_CANDLE_STABILIZATION_MS) {
@@ -1630,6 +1719,13 @@ class AutoTradeService : Service() {
 
         val deltaFromServerClose = nowSec - currentClosedCandleTimeSec
         if (deltaFromServerClose >= 60L) {
+            if (staleClosedCandleChase) {
+                Log.w(
+                    TAG,
+                    "adaptive wait stale-no-new-candle: deltaSec=$deltaFromServerClose chaseFast=${FAST_RECHECK_INTERVAL_MS}ms nowSec=$nowSec lastClosed=$currentClosedCandleTimeSec"
+                )
+                return FAST_RECHECK_INTERVAL_MS
+            }
             Log.w(
                 TAG,
                 "adaptive wait stale-no-new-candle: deltaSec=$deltaFromServerClose nowSec=$nowSec lastClosed=$currentClosedCandleTimeSec -> fallback=$LOOP_INTERVAL_MS"
@@ -1777,6 +1873,23 @@ class AutoTradeService : Service() {
         nm.notify(NOTIFICATION_ID, buildNotification(decision))
     }
 
+    private fun notifyTradeEvent(title: String, body: String) {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        tradeEventNotificationSeq = if (tradeEventNotificationSeq >= 3999) 3000 else tradeEventNotificationSeq + 1
+        nm.notify(
+            tradeEventNotificationSeq,
+            NotificationCompat.Builder(this, TRADE_EVENT_CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(title)
+                .setContentText(body.take(160))
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body.take(260)))
+                .setAutoCancel(true)
+                .setOngoing(false)
+                .setOnlyAlertOnce(false)
+                .build()
+        )
+    }
+
     private fun buildNotification(content: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
@@ -1790,14 +1903,24 @@ class AutoTradeService : Service() {
     private fun ensureNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-        nm.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                getString(R.string.auto_trade_notification_channel),
-                NotificationManager.IMPORTANCE_LOW
+        if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID,
+                    getString(R.string.auto_trade_notification_channel),
+                    NotificationManager.IMPORTANCE_LOW
+                )
             )
-        )
+        }
+        if (nm.getNotificationChannel(TRADE_EVENT_CHANNEL_ID) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    TRADE_EVENT_CHANNEL_ID,
+                    "Auto Trade Events",
+                    NotificationManager.IMPORTANCE_DEFAULT
+                )
+            )
+        }
     }
 
     private fun extractArrayCount(obj: JsonObject, vararg keys: String): Int {
@@ -2511,7 +2634,7 @@ class AutoTradeService : Service() {
 
     /**
      * When Python engine emits [close_signal] (same replay as backtest: stopLoss, takeProfit, trailingStop, strategyExit),
-     * close matching broker position(s) via [HivaGoldApi.closeFuturesTransaction] — same endpoint as the demo site.
+     * close matching broker position(s) via [HivaGoldApi.closeMazanehTransaction].
      * Position ids come from WS snapshot [HivaPriceSocketClient.Snapshot.openTransactions] (see [HivaPriceSocketClient.TransactionRef]),
      * or from REST `checkPortfolio` open list if WS list is empty / not ready — never from order-book `data_buy` ids.
      */
@@ -2634,6 +2757,17 @@ class AutoTradeService : Service() {
                 append("err=").append(sanitizeAuditToken(errMsg.take(160)))
             }
         )
+        appendTradeLedgerRow(
+            profileId,
+            buildString {
+                append("CLOSE|").append(nowSec).append("|").append(candleTimeSec).append("|")
+                append("dir=").append(sanitizeAuditToken(signalDirection)).append("|")
+                append("reason=").append(sanitizeAuditToken(exitReason).take(48)).append("|")
+                append("engPx=").append(exitPxKey).append("|")
+                append("ok=").append(ok).append("|n=").append(candidates.size).append("|")
+                append("ids=").append(sanitizeAuditToken(closedIds.take(120)))
+            }
+        )
         logCloseEnginePrefRow(
             profileId, nowSec, candleTimeSec,
             buildString {
@@ -2746,6 +2880,8 @@ class AutoTradeService : Service() {
         val rows = if (previous.isBlank()) mutableListOf() else previous.split('\n').toMutableList()
         val firstTs = candles.firstOrNull()?.time ?: 0L
         val lastTs = candles.lastOrNull()?.time ?: 0L
+        val shouldPersist = err.isNotBlank() || candles.isEmpty() || elapsedMs >= 500L
+        if (!shouldPersist) return
         rows += buildString {
             append(nowSec).append("|")
             append(candleTimeSec).append("|")
@@ -2772,6 +2908,7 @@ class AutoTradeService : Service() {
         tfLabel: String,
         stats: MergeRevisionStats
     ) {
+        if (stats.revisedCount <= 0) return
         val storageKey = "candle_revision_rows_$profileId"
         val previous = prefs.getString(storageKey, "").orEmpty()
         val rows = if (previous.isBlank()) mutableListOf() else previous.split('\n').toMutableList()
@@ -2895,6 +3032,18 @@ class AutoTradeService : Service() {
     ) {
         val safeDecision = decision.replace('\n', ' ').trim()
         val safeTrace = gateTrace.replace('\n', ' ').trim()
+        val noisyNoSignalSkip = safeDecision.startsWith("skip: signal=no_signal")
+        val traceInteresting =
+            safeTrace.contains("recovery=true") ||
+                safeTrace.contains("drift=") ||
+                safeTrace.contains("rate_limit=") ||
+                safeTrace.contains("close=") ||
+                safeTrace.contains("submit=")
+        val decisionInteresting =
+            safeDecision.contains("order") ||
+                safeDecision.contains("close_signal") ||
+                safeDecision.contains("rate-limited")
+        if (noisyNoSignalSkip && !traceInteresting && !decisionInteresting) return
         appendGateTraceRawRow(profileId, "$nowSec|$candleTimeSec|$safeDecision|$safeTrace")
     }
 
@@ -2908,6 +3057,34 @@ class AutoTradeService : Service() {
         rows += safe
         if (rows.size > MAX_PERSISTED_AUDIT_DEBUG_ROWS) {
             val dropCount = rows.size - MAX_PERSISTED_AUDIT_DEBUG_ROWS
+            repeat(dropCount) { rows.removeAt(0) }
+        }
+        prefs.edit().putString(storageKey, rows.joinToString(separator = "\n")).apply()
+    }
+
+    private fun appendTradeLedgerRow(profileId: String, row: String) {
+        val storageKey = "trade_ledger_rows_$profileId"
+        val previous = prefs.getString(storageKey, "").orEmpty()
+        val rows = if (previous.isBlank()) mutableListOf() else previous.split('\n').toMutableList()
+        val safe = row.replace('\n', ' ').trim()
+        if (safe.isBlank()) return
+        rows += safe
+        if (rows.size > MAX_PERSISTED_TRADE_LEDGER_ROWS) {
+            val dropCount = rows.size - MAX_PERSISTED_TRADE_LEDGER_ROWS
+            repeat(dropCount) { rows.removeAt(0) }
+        }
+        prefs.edit().putString(storageKey, rows.joinToString(separator = "\n")).apply()
+    }
+
+    private fun appendCycleAnomalyRow(profileId: String, row: String) {
+        val storageKey = "cycle_anomaly_rows_$profileId"
+        val previous = prefs.getString(storageKey, "").orEmpty()
+        val rows = if (previous.isBlank()) mutableListOf() else previous.split('\n').toMutableList()
+        val safe = row.replace('\n', ' ').trim()
+        if (safe.isBlank()) return
+        rows += safe
+        if (rows.size > MAX_PERSISTED_CYCLE_ANOMALY_ROWS) {
+            val dropCount = rows.size - MAX_PERSISTED_CYCLE_ANOMALY_ROWS
             repeat(dropCount) { rows.removeAt(0) }
         }
         prefs.edit().putString(storageKey, rows.joinToString(separator = "\n")).apply()
@@ -3089,50 +3266,56 @@ class AutoTradeService : Service() {
         candles1m: List<LocalCandle>,
         mtf: Map<Int, List<LocalCandle>>
     ) {
-        val storageKey = "signal_payload_rows_$profileId"
-        val previous = prefs2.getString(storageKey, "").orEmpty()
+        val legacyStorageKey = "signal_payload_rows_$profileId"
+        val compactStorageKey = "signal_payload_rows_compact_$profileId"
+        val previous = prefs2.getString(compactStorageKey, "").orEmpty()
         val rows = if (previous.isBlank()) mutableListOf() else previous.split('\n').toMutableList()
+
+        val first1m = candles1m.firstOrNull()?.time ?: 0L
+        val last1m = candles1m.lastOrNull()?.time ?: 0L
+        val tail1m = candles1m.takeLast(MAX_SIGNAL_PAYLOAD_COMPACT_1M_TAIL).joinToString(separator = ";") {
+            "${it.time}:${it.open.roundToInt()},${it.high.roundToInt()},${it.low.roundToInt()},${it.close.roundToInt()}"
+        }
+        val mtfSummary = mtf.keys.sorted().joinToString(separator = ",") { tf ->
+            val tfRows = mtf[tf].orEmpty()
+            val firstTf = tfRows.firstOrNull()?.time ?: 0L
+            val lastTf = tfRows.lastOrNull()?.time ?: 0L
+            "${tf}m:${tfRows.size}:$firstTf-$lastTf"
+        }
+        val mtfTail = mtf.keys.sorted().joinToString(separator = "|") { tf ->
+            val tfRows = mtf[tf].orEmpty()
+            val tail = tfRows.takeLast(MAX_SIGNAL_PAYLOAD_COMPACT_MTF_TAIL).joinToString(separator = ";") { c ->
+                "${c.time}:${c.open.roundToInt()},${c.high.roundToInt()},${c.low.roundToInt()},${c.close.roundToInt()}"
+            }
+            "${tf}m={$tail}"
+        }
         val payload = JsonObject().apply {
             addProperty("sent_at", nowSec)
             addProperty("candle_time", candleTimeSec)
             addProperty("profile_id", profileId)
             addProperty("recovery_mode", recoveryMode)
             addProperty("payload_hash", payloadHash)
-            add("candles_1m", JsonArray().apply {
-                for (c in candles1m) {
-                    add(JsonObject().apply {
-                        addProperty("time", c.time)
-                        addProperty("open", c.open)
-                        addProperty("high", c.high)
-                        addProperty("low", c.low)
-                        addProperty("close", c.close)
-                    })
-                }
-            })
-            add("mtf", JsonObject().apply {
-                for (tf in mtf.keys.sorted()) {
-                    val key = "${tf}m"
-                    val tfRows = mtf[tf].orEmpty()
-                    add(key, JsonArray().apply {
-                        for (c in tfRows) {
-                            add(JsonObject().apply {
-                                addProperty("time", c.time)
-                                addProperty("open", c.open)
-                                addProperty("high", c.high)
-                                addProperty("low", c.low)
-                                addProperty("close", c.close)
-                            })
-                        }
-                    })
-                }
-            })
+            addProperty("candles_1m_count", candles1m.size)
+            addProperty("candles_1m_first", first1m)
+            addProperty("candles_1m_last", last1m)
+            addProperty("candles_1m_tail", tail1m)
+            addProperty("mtf_summary", mtfSummary)
+            addProperty("mtf_tail", mtfTail)
         }
-        rows += payload.toString()
-        prefs2.edit().putString(storageKey, rows.joinToString(separator = "\n")).apply()
-        prefs2.edit().putString("last_signal_payload_$profileId", payload.toString()).apply()
+        val compactRow = payload.toString().take(MAX_SIGNAL_PAYLOAD_COMPACT_JSON_CHARS)
+        rows += compactRow
+        if (rows.size > MAX_PERSISTED_SIGNAL_PAYLOAD_COMPACT_ROWS) {
+            val dropCount = rows.size - MAX_PERSISTED_SIGNAL_PAYLOAD_COMPACT_ROWS
+            repeat(dropCount) { rows.removeAt(0) }
+        }
+        prefs2.edit()
+            .remove(legacyStorageKey)
+            .putString(compactStorageKey, rows.joinToString(separator = "\n"))
+            .putString("last_signal_payload_$profileId", compactRow)
+            .apply()
         Log.i(
             TAG,
-            "signal payload saved prefs2 profile=$profileId candle=$candleTimeSec hash=$payloadHash rows=${rows.size}"
+            "signal payload saved prefs2 profile=$profileId candle=$candleTimeSec hash=$payloadHash rows=${rows.size} compact=true"
         )
     }
 
@@ -3287,6 +3470,10 @@ class AutoTradeService : Service() {
                 auditProfileId,
                 "RISK_SYNC|${auditNowSec}|${auditCandleSec}|changed=$changed|src=$source|sigType=$effectiveType|sigSL=$stop|sigTP=$take|dir=$signalDirection"
             )
+            appendTradeLedgerRow(
+                auditProfileId,
+                "RISK_SYNC|${auditNowSec}|${auditCandleSec}|changed=$changed|src=$source|type=${sanitizeAuditToken(effectiveType)}|dir=${sanitizeAuditToken(signalDirection)}|sl=$stop|tp=$take"
+            )
             return RiskSyncOutcome(
                 decision = "updated tp/sl on open position(s)",
                 status = "changed=$changed src=$source type=$effectiveType sl=$stop tp=$take dir=$signalDirection",
@@ -3399,15 +3586,15 @@ class AutoTradeService : Service() {
         }
     }
 
-    private suspend fun closeAllActiveTradesAndOrdersAndPortfolio(): String {
+    private suspend fun closeActiveTradesAndOrders(includePortfolio: Boolean): String {
         var errors = ""
         val txJson = runCatching { HivaGoldClient.api.getMazanehTransactions(1) }.getOrElse { err ->
-            return "close-all failed: transactions unavailable ${err.message}"
+            return "close failed: transactions unavailable ${err.message}"
         }
         val openRows = txJson.getAsJsonArray("open") ?: JsonArray()
         val orderRows = runCatching { HivaGoldClient.api.getMazanehActiveOrders() }.getOrElse { emptyList() }
-        
-        Log.i(TAG, "close-all start open=${openRows.size()} pending=${orderRows.size}")
+
+        Log.i(TAG, "close start open=${openRows.size()} pending=${orderRows.size} includePortfolio=$includePortfolio")
 
         for (rowEl in openRows) {
             val row = rowEl.asJsonObject
@@ -3415,10 +3602,10 @@ class AutoTradeService : Service() {
             if (id.isBlank()) continue
             val idLong = id.toLongOrNull() ?: 0L
             runCatching { HivaGoldClient.api.closeMazanehTransaction(idLong, JsonObject()) }
-                .onSuccess { Log.i(TAG, "close-all closed position id=$id") }
+                .onSuccess { Log.i(TAG, "close closed position id=$id") }
                 .onFailure { err ->
                     errors = mergeError(errors, "close position $id failed: ${err.message}")
-                    Log.e(TAG, "close-all failed to close position id=$id", err)
+                    Log.e(TAG, "close failed to close position id=$id", err)
                 }
         }
         for (row in orderRows) {
@@ -3426,21 +3613,23 @@ class AutoTradeService : Service() {
             if (id.isBlank()) continue
             val idLong = id.toLongOrNull() ?: 0L
             runCatching { HivaGoldClient.api.cancelMazanehOrder(idLong) }
-                .onSuccess { Log.i(TAG, "close-all canceled order id=$id") }
+                .onSuccess { Log.i(TAG, "close canceled order id=$id") }
                 .onFailure { err ->
                     errors = mergeError(errors, "cancel order $id failed: ${err.message}")
-                    Log.e(TAG, "close-all failed to cancel order id=$id", err)
+                    Log.e(TAG, "close failed to cancel order id=$id", err)
                 }
         }
-        
-        val activePort = runCatching { HivaGoldClient.api.getMazanehActivePortfolio() }.getOrNull()
-        if (activePort != null) {
-            runCatching { HivaGoldClient.api.closeMazanehPortfolio(activePort.id) }
-                .onSuccess { Log.i(TAG, "close-all closed portfolio id=${activePort.id}") }
-                .onFailure { err ->
-                    errors = mergeError(errors, "close portfolio ${activePort.id} failed: ${err.message}")
-                    Log.e(TAG, "close-all failed to close portfolio id=${activePort.id}", err)
-                }
+
+        if (includePortfolio) {
+            val activePort = runCatching { HivaGoldClient.api.getMazanehActivePortfolio() }.getOrNull()
+            if (activePort != null) {
+                runCatching { HivaGoldClient.api.closeMazanehPortfolio(activePort.id) }
+                    .onSuccess { Log.i(TAG, "close closed portfolio id=${activePort.id}") }
+                    .onFailure { err ->
+                        errors = mergeError(errors, "close portfolio ${activePort.id} failed: ${err.message}")
+                        Log.e(TAG, "close failed to close portfolio id=${activePort.id}", err)
+                    }
+            }
         }
         return errors
     }
@@ -3536,6 +3725,10 @@ class AutoTradeService : Service() {
         val computed = (retryAfterSec ?: expBackoffSec)
             .coerceIn(MIN_ORDER_RATE_LIMIT_COOLDOWN_SEC, MAX_ORDER_RATE_LIMIT_COOLDOWN_SEC)
         orderRateLimitUntilEpochSec = nowSec + computed
+        appendCycleAnomalyRow(
+            profileId = activeProfileId,
+            row = "RATE_LIMIT_ORDER|$nowSec|retryAfter=${retryAfterSec ?: -1}|cooldown=$computed|hits=$consecutiveOrderRateLimitHits"
+        )
         Log.w(
             TAG,
             "order submit rate-limited hit=$consecutiveOrderRateLimitHits retryAfter=$retryAfterSec cooldownSec=$computed until=$orderRateLimitUntilEpochSec"
@@ -3549,6 +3742,10 @@ class AutoTradeService : Service() {
         val computed = (retryAfterSec ?: expBackoffSec)
             .coerceIn(MIN_CLOSE_RATE_LIMIT_COOLDOWN_SEC, MAX_CLOSE_RATE_LIMIT_COOLDOWN_SEC)
         closeRateLimitUntilEpochSec = nowSec + computed
+        appendCycleAnomalyRow(
+            profileId = activeProfileId,
+            row = "RATE_LIMIT_CLOSE|$nowSec|retryAfter=${retryAfterSec ?: -1}|cooldown=$computed|hits=$consecutiveCloseRateLimitHits"
+        )
         Log.w(
             TAG,
             "close submit rate-limited hit=$consecutiveCloseRateLimitHits retryAfter=$retryAfterSec cooldownSec=$computed until=$closeRateLimitUntilEpochSec"

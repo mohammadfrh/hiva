@@ -1,5 +1,6 @@
 package org.linphone.incomingcall.hiva
 
+import android.util.Log
 import com.google.gson.JsonParser
 import org.linphone.incomingcall.bot.local.LocalCandle
 import kotlinx.coroutines.Dispatchers
@@ -7,14 +8,29 @@ import kotlinx.coroutines.withContext
 import okhttp3.Request
 
 object HivaRoomClient {
+
+    private const val TAG = "HIVA_BARS"
+
     suspend fun getBars(resolution: String, fromSec: Long, toSec: Long): List<LocalCandle> {
         return withContext(Dispatchers.IO) {
-            val url = "${HivaGoldClient.BASE_URL}mazaneh/api/mazaneh-bars/?symbol=mazaneh&from=$fromSec&to=$toSec&resolution=$resolution"
+            val apiResolution = MazanehBarsResolution.toApi(resolution)
+            val url =
+                "${HivaGoldClient.BASE_URL}mazaneh/api/mazaneh-bars/?symbol=mazaneh&from=$fromSec&to=$toSec&resolution=$apiResolution"
+            Log.i(
+                TAG,
+                "getBars tf=$resolution apiResolution=$apiResolution from=$fromSec to=$toSec spanSec=${toSec - fromSec}"
+            )
             val req = Request.Builder().url(url).get().build()
             HivaGoldClient.okHttpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return@use emptyList()
+                if (!resp.isSuccessful) {
+                    Log.w(TAG, "getBars http=${resp.code} tf=$resolution apiResolution=$apiResolution")
+                    return@use emptyList()
+                }
                 val body = resp.body?.string().orEmpty()
-                if (body.isBlank()) return@use emptyList()
+                if (body.isBlank()) {
+                    Log.w(TAG, "getBars empty body tf=$resolution")
+                    return@use emptyList()
+                }
                 val root = JsonParser.parseString(body)
                 val candles = mutableListOf<LocalCandle>()
                 if (root.isJsonArray) {
@@ -46,7 +62,21 @@ object HivaRoomClient {
                         )
                     }
                 }
-                candles.sortedBy { it.time }
+                val sorted = candles.sortedBy { it.time }
+                val clipped = sorted.filter { it.time in fromSec..toSec }
+                val expected = MazanehBarsResolution.expectedBarsPerDay(resolution)
+                if (expected != null && clipped.size > expected * 2) {
+                    Log.w(
+                        TAG,
+                        "getBars suspicious count=${clipped.size} expected~$expected tf=$resolution apiResolution=$apiResolution — wrong resolution param or bad cache file; re-download day mock"
+                    )
+                } else {
+                    Log.i(
+                        TAG,
+                        "getBars ok tf=$resolution apiResolution=$apiResolution raw=${sorted.size} clipped=${clipped.size} first=${clipped.firstOrNull()?.time} last=${clipped.lastOrNull()?.time}"
+                    )
+                }
+                clipped
             }
         }
     }

@@ -1,8 +1,8 @@
 package org.linphone.incomingcall
 
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -10,14 +10,18 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.Request
 import org.linphone.incomingcall.databinding.ActivityLoginBinding
+import org.linphone.incomingcall.hiva.CaptchaImageLoader
 import org.linphone.incomingcall.hiva.HivaGoldClient
 import org.linphone.incomingcall.hiva.LoginRequest
 import org.linphone.incomingcall.hiva.parseApiDetailMessage
 import retrofit2.HttpException
 
 class LoginActivity : AppCompatActivity() {
+
+    private companion object {
+        private const val TAG = "HIVA_CAPTCHA"
+    }
 
     private lateinit var binding: ActivityLoginBinding
     private var captchaKey: String? = null
@@ -45,20 +49,19 @@ class LoginActivity : AppCompatActivity() {
         binding.progressCaptcha.visibility = View.VISIBLE
         lifecycleScope.launch {
             try {
+                Log.i(TAG, "captcha-image API request")
                 val res = HivaGoldClient.api.getCaptchaImage()
                 captchaKey = res.captchaKey
-                val url = HivaGoldClient.BASE_URL.trimEnd('/') + "/api" + res.imageUrl
+                Log.i(TAG, "captcha-image API ok key=${captchaKey?.take(8)}... imageUrl=${res.imageUrl}")
                 val bmp = withContext(Dispatchers.IO) {
-                    val request = Request.Builder().url(url).get().build()
-                    HivaGoldClient.okHttpClient.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) return@withContext null
-                        response.body?.byteStream()?.use { BitmapFactory.decodeStream(it) }
-                    }
+                    CaptchaImageLoader.loadBitmapForPath(HivaGoldClient.okHttpClient, res.imageUrl)
                 }
                 binding.progressCaptcha.visibility = View.GONE
                 if (bmp != null) {
+                    Log.i(TAG, "UI captcha bitmap set ${bmp.width}x${bmp.height}")
                     binding.imageCaptcha.setImageBitmap(bmp)
                 } else {
+                    Log.w(TAG, "UI captcha bitmap null — check HIVA_CAPTCHA logs above")
                     Toast.makeText(
                         this@LoginActivity,
                         R.string.captcha_load_failed,

@@ -33,7 +33,7 @@ class HivaMazanehSocketClient(
     @Volatile private var snapshot = MazanehSnapshot()
     @Volatile private var snapshotListener: ((MazanehSnapshot) -> Unit)? = null
 
-    private val wsBase = "wss://demo.hivagold.org/mazaneh/ws/mazaneh/"
+    private val wsBase get() = HivaGoldClient.mazanehWsBase()
 
     fun start() {
         if (started.getAndSet(true)) return

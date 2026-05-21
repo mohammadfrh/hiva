@@ -60,17 +60,17 @@ class HivaPriceSocketClient(
     
     private fun endpoints(): List<String> {
         if (symbol == "mazaneh" || symbol == "mazane") {
+            val wsBase = HivaGoldClient.mazanehWsBase()
             return listOf(
-                "wss://demo.hivagold.org/mazaneh/ws/mazaneh/price/",
-                "wss://demo.hivagold.org/mazaneh/ws/mazaneh/trading/",
-                "wss://demo.hivagold.org/mazaneh/ws/mazaneh/live-bars/"
+                "${wsBase}price/",
+                "${wsBase}trading/",
+                "${wsBase}live-bars/"
             )
         }
+        val host = java.net.URI(HivaGoldClient.BASE_URL).host ?: "hivaex.ir"
         val token = HivaGoldClient.accessTokenOrNull().orEmpty()
         val tokenPart = if (token.isNotBlank()) "?token=$token" else ""
-        return listOf(
-            "wss://demo.hivagold.org/ws/$tokenPart"
-        )
+        return listOf("wss://$host/ws/$tokenPart")
     }
     @Volatile private var endpointIndex = 0
 

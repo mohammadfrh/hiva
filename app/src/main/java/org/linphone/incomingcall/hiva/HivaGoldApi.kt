@@ -47,10 +47,10 @@ interface HivaGoldApi {
     @GET("mazaneh/api/static-value/")
     suspend fun getMazanehStaticValues(): MazanehStaticValues
 
-    @GET("mazaneh//api/portfolio/active/")
+    @GET("mazaneh/api/portfolio/active/")
     suspend fun getMazanehActivePortfolio(): MazanehPortfolio
 
-    @POST("mazaneh//api/portfolio/create/")
+    @POST("mazaneh/api/portfolio/create/")
     suspend fun createMazanehPortfolio(@Body body: JsonObject): MazanehPortfolio
 
     @GET("mazaneh/api/mazaneh-bars/")

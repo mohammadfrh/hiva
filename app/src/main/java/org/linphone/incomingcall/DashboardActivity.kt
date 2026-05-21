@@ -220,7 +220,8 @@ class DashboardActivity : AppCompatActivity() {
             return
         }
 
-        val url = "wss://demo.hivagold.org/ws/?token=$token"
+        val host = java.net.URI(HivaGoldClient.BASE_URL).host ?: "hivaex.ir"
+        val url = "wss://$host/ws/?token=$token"
         binding.textWsTestStatus.text = "WS test: connecting..."
         Log.i(wsTestTag, "ws test connect url=$url")
         val request = Request.Builder().url(url).build()

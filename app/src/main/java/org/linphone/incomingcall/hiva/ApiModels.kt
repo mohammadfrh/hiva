@@ -32,7 +32,9 @@ data class UserInfoResponse(
     @SerializedName("referral_code") val referralCode: String?,
     val balance: Long,
     @SerializedName("is_verified") val isVerified: Boolean,
-    @SerializedName("is_superuser") val isSuperuser: Boolean
+    @SerializedName("is_superuser") val isSuperuser: Boolean,
+    @SerializedName("can_view_develop_page_market") val canViewDevelopPageMarket: Boolean = false,
+    @SerializedName("apk_url") val apkUrl: String? = null
 )
 
 data class TetherRateResponse(
